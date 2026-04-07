@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}成绩分析管理 - 校园数据平台{% endblock %}
+
+{% block head %}
+<style>
+    /* 继承全局变量后，本页特有样式 */
+    .container { max-width: 1250px; margin: 30px auto; padding: 0 20px;} 
+    
+    .page-header { display: flex; align-items: center; margin-bottom: 20px; }
+    .back-btn { display: inline-flex; align-items: center; color: var(--apple-blue); text-decoration: none; font-weight: 500; font-size: 15px; margin-right: 20px; transition: 0.2s; }
+    .back-btn:hover { color: #0077ed; opacity: 0.8; }
+    h1 { font-size: 28px; font-weight: 600; margin: 0; flex-grow: 1; text-align: center; margin-right: 80px; }
+
+    .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 20px; }
+    
+    .controls-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+
+    /* 按钮样式系统 */
+    .btn-primary { background-color: var(--apple-blue); color: white; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+    .btn-primary:hover { background-color: #0077ed; color: white; }
+
+    /* 新增：次级按钮样式 (用于配置师资分布) */
+    .btn-secondary { background-color: #e8e8ed; color: var(--text-main); border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+    .btn-secondary:hover { background-color: #d2d2d7; color: var(--text-main); }
+
+    button { background-color: var(--apple-blue); color: white; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+    button:hover { background-color: #0077ed; }
+
+    /* 空状态展示区 */
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--text-secondary); }
+    .empty-icon { font-size: 60px; margin-bottom: 20px; opacity: 0.8; }
+    .empty-title { font-size: 20px; font-weight: 600; color: var(--text-main); margin-bottom: 10px; }
+
+    input[type="text"], select { padding: 10px 12px; border-radius: 8px; border: 1px solid #d2d2d7; font-size: 14px; outline: none; transition: 0.2s; background-color: #fafafa; box-sizing: border-box; }
+    input[type="text"]:focus, select:focus { border-color: var(--apple-blue); background-color: white; box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1); }
+
+    /* 考试卡片网格系统 */
+    .exam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; padding: 10px 0; }
+    .exam-card { border: 1px solid #e5e5ea; border-radius: 12px; padding: 20px; background: #fff; transition: 0.2s; display: flex; flex-direction: column; }
+    .exam-card:hover { box-shadow: 0 10px 20px rgba(0,0,0,0.06); transform: translateY(-2px); border-color: var(--apple-blue); }
+    .exam-title { font-size: 18px; font-weight: 600; color: var(--text-main); margin-bottom: 8px; }
+    .exam-meta { font-size: 13px; color: var(--text-secondary); margin-bottom: 5px; display: flex; align-items: center; gap: 6px; }
+    .exam-meta-icon { opacity: 0.7; }
+    .exam-footer { margin-top: 15px; padding-top: 15px; border-top: 1px solid #f2f2f7; display: flex; justify-content: space-between; align-items: center; }
+    .btn-analyze { background-color: #f0f7ff; color: var(--apple-blue); border-radius: 6px; padding: 6px 12px; font-weight: 600; font-size: 13px; border: none; cursor: pointer; transition: 0.2s; }
+    .btn-analyze:hover { background-color: var(--apple-blue); color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <a href="/" class="back-btn">‹ 返回主页</a>
+        <h1>成绩分析大厅</h1>
+    </div>
+
+    <div class="card" style="display: flex; gap: 15px; align-items: center; padding: 15px 20px;">
+        <span style="font-weight: 600; font-size: 15px;">当前查看年级：</span>
+        <input type="text" id="search_grade" placeholder="输入入学年份，如: 2024" style="width: 200px; padding: 8px 12px; margin: 0;">
+
+        <span style="font-weight: 600; font-size: 15px; margin-left: 15px;">学期：</span>
+        <select id="search_semester" style="width: 150px; padding: 8px 12px; margin: 0;">
+            <option value="全部">全部</option>
+            <option value="高一上">高一上</option>
+            <option value="高一下">高一下</option>
+            <option value="高二上">高二上</option>
+            <option value="高二下">高二下</option>
+            <option value="高三上">高三上</option>
+            <option value="高三下">高三下</option>
+        </select>
+
+        <button onclick="loadExamList()">🔍 查询考试列表</button>
+    </div>
+
+    <div class="card">
+        <div class="controls-header">
+            <div style="font-size: 14px; color: var(--text-secondary);">
+                💡 提示：日常请在此维护教学班与师资底表，考务大考请使用新建考试流水线。
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <a href="/scoresManagement/stable_student_mapping_hub" class="btn-secondary">⚙️ 配置学生教学班</a>
+
+                <a href="/scoresManagement/stable_mapping_hub" class="btn-secondary">⚙️ 配置师资分布</a>
+
+                <a href="/scoresManagement/import" class="btn-primary">➕ 新建考试导入流水线</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" id="examListContainer">
+        <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <div class="empty-title">暂无考试数据</div>
+            <p>请点击右上角“新建考试导入流水线”创建数据。创建后，您可以在这里生成各班级的可视化图表。</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 从后端加载考试列表数据
+    function loadExamList() {
+        const gradeYear = document.getElementById('search_grade').value.trim();
+        const semester = document.getElementById('search_semester').value; // 获取选择的学期
+
+        if (!gradeYear) {
+            alert("请输入要查询的年级！");
+            return;
+        }
+
+        const container = document.getElementById('examListContainer');
+        container.innerHTML = `<div style="text-align: center; padding: 40px; color: #86868b;">⏳ 正在加载 ${gradeYear} 级的考试数据...</div>`;
+
+        // 请求 URL 拼接上 semester 参数
+        fetch(`/api/scores/list?grade_year=${gradeYear}&semester=${encodeURIComponent(semester)}`)
+            .then(res => {
+                if (res.status === 401) { window.location.href = '/login'; return null; }
+                return res.json();
+            })
+            .then(data => {
+                if (!data) return;
+                if (data.status === 'success') {
+                    renderExamCards(data.data, gradeYear);
+                } else {
+                    container.innerHTML = `<div class="empty-state">❌ 加载失败: ${data.message}</div>`;
+                }
+            })
+            .catch(err => {
+                container.innerHTML = `<div class="empty-state">❌ 网络请求异常</div>`;
+                console.error(err);
+            });
+    }
+
+    // 将数据渲染为精美的卡片
+    function renderExamCards(exams, gradeYear) {
+        const container = document.getElementById('examListContainer');
+
+        if (!exams || exams.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-title">暂无 ${gradeYear} 级的考试数据</div>
+                    <p>请点击右上角“新建考试导入流水线”创建数据。</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = `<div class="exam-grid">`;
+        exams.forEach(exam => {
+            html += `
+                <div class="exam-card">
+                    <div class="exam-title">${exam.exam_name}</div>
+                    <div class="exam-meta"><span class="exam-meta-icon">📅</span> 考试日期：${exam.exam_date}</div>
+                    <div class="exam-meta"><span class="exam-meta-icon">🏷️</span> 考试类型：${exam.exam_type} (${exam.semester})</div>
+                    <div class="exam-meta"><span class="exam-meta-icon">👨‍🎓</span> 导入人数：<span style="color: var(--apple-blue); font-weight: 600;">${exam.student_count}</span> 人</div>
+                    <div class="exam-footer">
+                        <span style="font-size: 12px; color: #86868b;">导入人: ${exam.creator || '系统'}</span>
+                        <button class="btn-analyze" onclick="goToAnalyze('${exam.exam_id}', '${gradeYear}')">📈 进入分析大屏</button>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+
+    // 进入大屏跳转函数
+    function goToAnalyze(examId, gradeYear) {
+        window.location.href = `/scores/analyze?exam_id=${examId}&grade_year=${gradeYear}`;
+    }
+
+</script>
+{% endblock %}

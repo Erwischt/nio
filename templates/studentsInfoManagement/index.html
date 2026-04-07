@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}学生信息管理{% endblock %}
+
+{% block head %}
+<style>
+    /* 继承全局变量后，仅保留本页特有样式 */
+    .container { max-width: 1250px; margin: 30px auto; padding: 0 20px;} 
+    
+    .page-header { display: flex; align-items: center; margin-bottom: 20px; }
+    .back-btn { display: inline-flex; align-items: center; color: var(--apple-blue); text-decoration: none; font-weight: 500; font-size: 15px; margin-right: 20px; transition: 0.2s; }
+    .back-btn:hover { color: #0077ed; opacity: 0.8; }
+    h1 { font-size: 28px; font-weight: 600; margin: 0; flex-grow: 1; text-align: center; margin-right: 80px; }
+
+    .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 20px; }
+    
+    .controls-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+    .controls-actions { display: flex; gap: 10px; }
+
+    button { background-color: var(--apple-blue); color: white; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+    button:hover { background-color: #0077ed; }
+    button.secondary { background-color: #e8e8ed; color: var(--text-main); }
+    button.secondary:hover { background-color: #d2d2d7; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    input[type="text"], input[type="number"], select { padding: 9px 12px; border-radius: 6px; border: 1px solid #d2d2d7; font-size: 14px; outline: none; transition: 0.2s; background-color: white; box-sizing: border-box; }
+    input[type="text"]:focus, select:focus { border-color: var(--apple-blue); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2); }
+    input:disabled, select:disabled { background-color: #fbfbfd; color: #1d1d1f; cursor: not-allowed; border: 1px dashed #d2d2d7; }
+
+    .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; background: #fbfbfd; padding: 15px; border-radius: 10px; border: 1px solid #e8e8ed; }
+    .adv-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; width: 100%; }
+    .adv-row:last-child { margin-bottom: 0; }
+    .logic-select { width: 80px; }
+    .field-select { width: 130px; }
+    .op-select { width: 100px; }
+    .val-input { flex-grow: 1; max-width: 300px; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #d2d2d7; }
+    th { font-weight: 500; color: var(--text-secondary); }
+
+    button.action-btn { padding: 5px 10px; font-size: 12px; margin-right: 5px; border-radius: 6px; }
+    button.btn-success { background-color: #34c759; }
+    button.btn-success:hover { background-color: #2eb050; }
+    button.btn-danger { background-color: var(--apple-red); }
+    button.btn-danger:hover { background-color: #d70015; }
+
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
+
+    .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px); z-index: 100; justify-content: center; align-items: center; }
+    .modal { background: white; padding: 30px; border-radius: var(--border-radius); width: 650px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
+    .form-section { grid-column: 1 / -1; font-size: 14px; font-weight: 600; color: var(--apple-blue); margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #e8e8ed; padding-bottom: 5px; }
+    .confirm-modal { width: 320px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <a href="/" class="back-btn">‹ 返回主页</a>
+        <h1>学生信息管理</h1>
+    </div>
+
+    <div class="card">
+        <div class="controls-header">
+            <div>
+                <button class="secondary" id="toggleModeBtn" onclick="toggleFilterMode()">⧉ 启用高级筛选</button>
+            </div>
+            <div class="controls-actions">
+                <button class="secondary" onclick="window.location.href='/static/files/学生信息批量修改模板.xlsx'">📥 下载模板</button>
+                <input type="file" id="excelFileInput" accept=".xls,.xlsx" style="display: none;" onchange="uploadExcel()">
+                <button class="secondary" onclick="document.getElementById('excelFileInput').click()">📤 批量导入</button>
+                <button onclick="openAddModal()">+ 添加学生</button>
+            </div>
+        </div>
+
+        <div id="simpleFilterBar" class="filter-bar">
+            <input type="text" id="s_keyword" placeholder="搜姓名、学号、身份证..." style="width:220px;" onkeypress="handleEnter(event)">
+            <select id="s_campus" style="width:120px;">
+                <option value="">全部校区</option><option value="校本部">校本部</option><option value="礼贤校区">礼贤校区</option>
+            </select>
+            <input type="text" id="s_year" placeholder="入学年份 (如2024)" style="width:140px;" onkeypress="handleEnter(event)">
+            <input type="text" id="s_class" placeholder="班级 (如01)" style="width:100px;" onkeypress="handleEnter(event)">
+            <button onclick="loadStudents(1)">查询</button>
+            <button class="secondary" onclick="resetSimpleFilters()">重置</button>
+            <button onclick="downloadQueryResults()" class="btn-secondary" style="background-color: #f1f5f9; color: var(--apple-blue); border: 1px solid #cce0ff; font-weight: 600;">📥 下载查询结果</button>
+        </div>
+
+        <div id="advancedFilterBar" class="filter-bar" style="display: none; flex-direction: column; align-items: flex-start;">
+            <div id="advRowsContainer" style="width: 100%;"></div>
+            <div style="margin-top: 5px; display: flex; gap: 10px;">
+                <button class="secondary" onclick="addAdvRow()">+ 添加条件</button>
+                <button onclick="loadStudents(1)">高级查询</button>
+                <button onclick="downloadQueryResults()" class="btn-secondary" style="background-color: #f1f5f9; color: var(--apple-blue); border: 1px solid #cce0ff; font-weight: 600;">📥 下载查询结果</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>内部编号</th><th>姓名</th><th>性别</th><th>班级</th><th>校区</th><th style="width: 160px;">操作</th></tr>
+            </thead>
+            <tbody id="studentTableBody">
+                <tr><td colspan="6" style="text-align:center; color: #86868b; padding: 40px;">请在上方输入条件并点击“查询”加载数据</td></tr>
+            </tbody>
+        </table>
+        
+        <div class="pagination">
+            <button id="btnPrev" class="secondary" disabled onclick="changePage(currentPage - 1)">上一页</button>
+            <span id="pageInfo">未执行查询</span>
+            <button id="btnNext" class="secondary" disabled onclick="changePage(currentPage + 1)">下一页</button>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="formOverlay">
+    <div class="modal">
+        <h2 id="modalTitle" style="margin-top:0">学生信息</h2>
+        <p id="modalSubtitle" style="font-size:12px; color:var(--text-secondary);">注：带有 * 的为必填项</p>
+        <form id="studentForm">
+            <div class="form-grid">
+                <div class="form-section">📌 基础身份信息</div>
+                <div class="form-group"><label>内部编号 (留空系统自动生成)</label><input type="text" id="f_custom_id"></div>
+                <div class="form-group"><label>省学籍辅号</label><input type="text" id="f_school_id" maxlength="19"></div>
+                <div class="form-group"><label>国家身份证号</label><input type="text" id="f_national_id" maxlength="18"></div>
+                <div class="form-group"><label>姓名 *</label><input type="text" id="f_name"></div>
+                <div class="form-group"><label>性别</label><select id="f_sex"><option value="">请选择</option><option value="男">男</option><option value="女">女</option></select></div>
+                <div class="form-group"><label>曾用名</label><input type="text" id="f_former_name"></div>
+
+                <div class="form-section">🎓 学籍与学术信息</div>
+                <div class="form-group"><label>校区 *</label><select id="f_campus"><option value="">请选择</option><option value="校本部">校本部</option><option value="礼贤校区">礼贤校区</option><option value="暂无" style="display:none;">暂无</option></select></div>
+                <div class="form-group"><label>入学年份 *</label><input type="text" id="f_enter_year" maxlength="4" placeholder="例如：2026"></div>
+                <div class="form-group"><label>当前班级 *</label><input type="text" id="f_current_class" maxlength="2" placeholder="例如：01 或 12"></div>
+                <div class="form-group"><label>选科 *</label><input type="text" id="f_subject" placeholder="例如：物化生"></div>
+                <div class="form-group"><label>类别 *</label><select id="f_category"><option value="">请选择</option><option value="普通类">普通类</option><option value="艺术类">艺术类</option><option value="体育类">体育类</option><option value="暂无" style="display:none;">暂无</option></select></div>
+                <div class="form-group"><label>专业</label><input type="text" id="f_major" placeholder="仅艺体生填写"></div>
+                <div class="form-group"><label>在校情况 *</label><select id="f_at_school"><option value="">请选择</option><option value="正常在校">正常在校</option><option value="长期不在校">长期不在校</option><option value="暂无" style="display:none;">暂无</option></select></div>
+
+                <div class="form-section">🏠 住宿与生活信息</div>
+                <div class="form-group"><label>住宿情况 *</label><select id="f_boarding_status" onchange="toggleBoardingFields()"><option value="">请选择</option><option value="住宿">住宿</option><option value="走读">走读</option><option value="暂无" style="display:none;">暂无</option></select></div>
+                <div class="form-group"><label>公寓楼</label><input type="text" id="f_apartment"></div>
+                <div class="form-group"><label>宿舍及床位</label><input type="text" id="f_dormitory"></div>
+
+                <div class="form-section">📝 特殊信息备注</div>
+                <div class="form-group" style="grid-column: 1 / -1;"><label>特殊备注</label><input type="text" id="f_remarks"></div>
+                
+                <div class="form-section">⏱️ 系统记录</div>
+                <div class="form-group" style="grid-column: 1 / -1;"><label>系统最后更新时间</label><input type="text" id="f_last_edit_at" disabled placeholder="系统自动生成"></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" class="secondary" onclick="closeFormModal()">关闭</button>
+                <button type="button" id="btnSaveStudent" onclick="validateAndSubmit()">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="overlay" id="confirmOverlay" style="z-index: 200;">
+    <div class="modal confirm-modal">
+        <h3>必填字段为空</h3>
+        <p id="confirmMessage" style="font-size: 14px; color: var(--text-secondary);"></p>
+        <div style="display: flex; justify-content: space-between; margin-top: 20px;">
+            <button type="button" class="secondary" onclick="closeConfirmModal()">返回修改</button>
+            <button type="button" onclick="confirmEmptyAndSubmit()">确认为空</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allStudents = [];
+    let currentEditId = null;
+    let currentMode = 'simple';
+    let currentPage = 1;
+    let totalPages = 1;
+
+    const advFields = {
+        'custom_id': { label: '内部编号', type: 'text' },
+        'school_id': { label: '省学籍辅号', type: 'text' },
+        'national_id': { label: '身份证号', type: 'text' },
+        'name': { label: '姓名', type: 'text' },
+        'sex': { label: '性别', type: 'select', options: ['男', '女'] },
+        'enter_year': { label: '入学年份', type: 'text' },
+        'campus': { label: '校区', type: 'select', options: ['校本部', '礼贤校区'] },
+        'current_class': { label: '班级', type: 'text' },
+        'subject': { label: '选科', type: 'text' },
+        'category': { label: '类别', type: 'select', options: ['普通类', '艺术类', '体育类'] },
+        'at_school': { label: '在校情况', type: 'select', options: ['正常在校', '长期不在校'] },
+        'boarding_status': { label: '住宿情况', type: 'select', options: ['住宿', '走读'] },
+        'major': { label: '专业', type: 'text' },
+        'remarks': { label: '特殊备注', type: 'text' }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => { addAdvRow(); });
+
+    function handleEnter(e) { if(e.key === 'Enter') loadStudents(1); }
+
+    function toggleFilterMode() {
+        currentMode = currentMode === 'simple' ? 'advanced' : 'simple';
+        document.getElementById('simpleFilterBar').style.display = currentMode === 'simple' ? 'flex' : 'none';
+        document.getElementById('advancedFilterBar').style.display = currentMode === 'advanced' ? 'flex' : 'none';
+        document.getElementById('toggleModeBtn').innerText = currentMode === 'simple' ? '⧉ 启用高级筛选' : '⧉ 切换回普通筛选';
+    }
+
+    function resetSimpleFilters() {
+        document.getElementById('s_keyword').value = '';
+        document.getElementById('s_campus').value = '';
+        document.getElementById('s_year').value = '';
+        document.getElementById('s_class').value = '';
+        loadStudents(1);
+    }
+
+    function addAdvRow() {
+        const container = document.getElementById('advRowsContainer');
+        const rowCount = container.children.length;
+        const div = document.createElement('div');
+        div.className = 'adv-row';
+        const logicHTML = `<select class="logic-select" style="${rowCount === 0 ? 'visibility:hidden;' : ''}"><option value="AND">并且 (AND)</option><option value="OR">或者 (OR)</option></select>`;
+        let fieldOptions = '';
+        for(let key in advFields) fieldOptions += `<option value="${key}">${advFields[key].label}</option>`;
+        const fieldHTML = `<select class="field-select" onchange="handleFieldChange(this)">${fieldOptions}</select>`;
+        const opHTML = `<select class="op-select"><option value="=">等于 (=)</option><option value="LIKE">包含</option><option value="!=">不等于 (≠)</option></select>`;
+        const valHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
+        const delBtn = `<button class="action-btn btn-danger" onclick="this.parentElement.remove()">- 移除</button>`;
+        div.innerHTML = `${logicHTML} ${fieldHTML} ${opHTML} <div class="val-container" style="flex-grow:1; max-width:300px;">${valHTML}</div> ${delBtn}`;
+        container.appendChild(div);
+        handleFieldChange(div.querySelector('.field-select')); 
+    }
+
+    function handleFieldChange(selectEl) {
+        const config = advFields[selectEl.value];
+        const valContainer = selectEl.parentElement.querySelector('.val-container');
+        if(config.type === 'select') {
+            let opts = '<option value="">请选择...</option>';
+            config.options.forEach(o => opts += `<option value="${o}">${o}</option>`);
+            valContainer.innerHTML = `<select class="val-input">${opts}</select>`;
+        } else {
+            valContainer.innerHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
+        }
+    }
+
+    function changePage(p) { if(p >= 1 && p <= totalPages) loadStudents(p); }
+
+    function loadStudents(pageNum) {
+        currentPage = pageNum;
+        const payload = { mode: currentMode, page: currentPage, limit: 20 };
+        if(currentMode === 'simple') {
+            payload.keyword = document.getElementById('s_keyword').value;
+            payload.campus = document.getElementById('s_campus').value;
+            payload.enter_year = document.getElementById('s_year').value;
+            payload.current_class = document.getElementById('s_class').value;
+        } else {
+            payload.filters = [];
+            document.querySelectorAll('.adv-row').forEach(row => {
+                const val = row.querySelector('.val-input').value;
+                if(val) payload.filters.push({ logic: row.querySelector('.logic-select').value, field: row.querySelector('.field-select').value, operator: row.querySelector('.op-select').value, value: val });
+            });
+        }
+
+        fetch('/api/students/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(res => {
+            if(res.status === 401) { alert("会话过期，请重新登录！"); window.location.href='/login'; return null; }
+            return res.json();
+        })
+        .then(data => {
+            if(!data) return;
+            if(data.status === 'success') {
+                allStudents = data.data; totalPages = data.total_pages;
+                renderTable(data.data);
+                document.getElementById('pageInfo').innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页 (共 ${data.total} 条)`;
+                document.getElementById('btnPrev').disabled = (currentPage === 1);
+                document.getElementById('btnNext').disabled = (currentPage === totalPages || totalPages === 0);
+            }
+        }).catch(err => alert("查询请求失败"));
+    }
+
+    function renderTable(data) {
+        const tbody = document.getElementById('studentTableBody');
+        tbody.innerHTML = '';
+        if (data.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: #86868b; padding: 40px;">未找到符合条件的学生数据</td></tr>'; return; }
+        data.forEach(s => {
+            const classDisplay = s.enter_year ? `${s.enter_year.slice(-2)}级${s.current_class}班` : `${s.current_class}班`;
+            tbody.innerHTML += `<tr>
+                <td>${s.custom_id || ''}</td><td><strong>${s.name}</strong></td><td>${s.sex || ''}</td><td>${classDisplay}</td><td>${s.campus}</td>
+                <td>
+                    <button class="action-btn btn-success" onclick="openStudentModal(${s.id}, 'view')">详情</button>
+                    <button class="action-btn" onclick="openStudentModal(${s.id}, 'edit')">编辑</button>
+                    <button class="action-btn btn-danger" onclick="deleteStudent(${s.id})">删除</button>
+                </td>
+            </tr>`;
+        });
+    }
+
+    function deleteStudent(id) {
+        if (confirm("确定删除该记录吗？")) {
+            fetch(`/api/students/${id}`, { method: 'DELETE' }).then(res => res.json()).then(data => { if(data.status === 'success') loadStudents(currentPage); })
+        }
+    }
+
+    function uploadExcel() {
+        const fileInput = document.getElementById('excelFileInput');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        // 核心增强：构建并显示极具 Apple 风格的进度条遮罩层
+        let loadingOverlay = document.getElementById('loadingOverlay');
+        if (!loadingOverlay) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loadingOverlay';
+            loadingOverlay.innerHTML = `
+                <div style="background: rgba(255,255,255,0.95); padding: 30px 40px; border-radius: 16px; width: 320px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.05); backdrop-filter: blur(10px);">
+                    <div style="font-size: 16px; font-weight: 600; color: var(--text-main); margin-bottom: 8px;">正在导入学籍档案</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">系统正在极速解析并写入数据库...</div>
+
+                    <div style="height: 6px; background: #e5e5ea; border-radius: 3px; overflow: hidden; margin-bottom: 12px;">
+                        <div id="uploadProgressBar" style="width: 0%; height: 100%; background: var(--apple-blue); border-radius: 3px; transition: width 0.3s ease-out;"></div>
+                    </div>
+
+                    <div id="uploadProgressText" style="font-size: 13px; font-weight: 600; color: var(--apple-blue);">0%</div>
+                </div>
+            `;
+            loadingOverlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(3px); z-index: 9999; display: flex; justify-content: center; align-items: center;';
+            document.body.appendChild(loadingOverlay);
+        } else {
+            loadingOverlay.style.display = 'flex';
+            document.getElementById('uploadProgressBar').style.width = '0%';
+            document.getElementById('uploadProgressText').innerText = '0%';
+        }
+
+        const progressBar = document.getElementById('uploadProgressBar');
+        const progressText = document.getElementById('uploadProgressText');
+
+        // 智能模拟进度流转 (最快跑到 90% 停下等待后端)
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            if (progress < 90) {
+                // 随机增加 5~15 的进度，产生真实的加载感
+                const increment = Math.random() * 10 + 5;
+                progress = Math.min(progress + increment, 90);
+                progressBar.style.width = progress + '%';
+                progressText.innerText = Math.round(progress) + '%';
+            }
+        }, 150);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // 发起后端请求
+        fetch('/api/students/import', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            // 后端返回结果，强制将进度拉满到 100%
+            clearInterval(progressInterval);
+            progressBar.style.width = '100%';
+            progressText.innerText = '100%';
+
+            // 稍微延迟 400ms，让用户看清 100% 的动画，然后再弹出提示并关闭遮罩
+            setTimeout(() => {
+                fileInput.value = '';
+                loadingOverlay.style.display = 'none';
+
+                if(data.status === 'success') {
+                    alert(`✅ 处理完成！\n新增: ${data.insert_count} 条\n更新: ${data.update_count} 条\n失败/跳过: ${data.error_count} 条`);
+                    loadStudents(1);
+                } else {
+                    alert('❌ 失败：' + data.message);
+                }
+            }, 400);
+        })
+        .catch(err => {
+            clearInterval(progressInterval);
+            fileInput.value = '';
+            loadingOverlay.style.display = 'none';
+            alert('❌ 网络请求断开，请检查网络或联系管理员。');
+            console.error(err);
+        });
+    }
+
+    const requiredFields = { 'f_name':'姓名', 'f_enter_year':'入学年份', 'f_campus':'校区', 'f_current_class':'当前班级', 'f_subject':'选科', 'f_category':'类别', 'f_at_school':'在校情况', 'f_boarding_status':'住宿情况' };
+
+    function toggleBoardingFields() {
+        const status = document.getElementById('f_boarding_status').value;
+        const aptInput = document.getElementById('f_apartment');
+        const dormInput = document.getElementById('f_dormitory');
+        if (status === '走读') {
+            aptInput.value = '走读'; dormInput.value = '走读';
+            aptInput.disabled = true; dormInput.disabled = true;
+        } else {
+            aptInput.disabled = false; dormInput.disabled = false;
+            if (aptInput.value === '走读' || aptInput.value === '暂无') aptInput.value = '';
+            if (dormInput.value === '走读' || dormInput.value === '暂无') dormInput.value = '';
+        }
+    }
+
+    function openAddModal() { 
+        currentEditId = null; document.getElementById('modalTitle').innerText = '添加新学生';
+        document.getElementById('modalSubtitle').style.display = 'block'; document.getElementById('studentForm').reset();
+        document.querySelectorAll('#studentForm input, #studentForm select').forEach(input => input.disabled = (input.id === 'f_last_edit_at'));
+        toggleBoardingFields(); 
+        document.getElementById('btnSaveStudent').style.display = 'inline-block';
+        document.getElementById('formOverlay').style.display = 'flex'; 
+    }
+
+    function openStudentModal(id, mode) {
+        currentEditId = id; document.getElementById('modalTitle').innerText = mode === 'view' ? '学生详细信息' : '编辑学生信息';
+        document.getElementById('modalSubtitle').style.display = mode === 'view' ? 'none' : 'block';
+        const s = allStudents.find(x => x.id === id);
+        if (!s) return;
+        ['custom_id','school_id','national_id','name','sex','former_name','campus','enter_year','current_class','subject','category','major','at_school','boarding_status','apartment','dormitory','remarks','last_edit_at'].forEach(k => {
+            const el = document.getElementById('f_' + k);
+            if(el) el.value = s[k] || (k === 'last_edit_at' ? '无历史修改记录' : '');
+        });
+        document.querySelectorAll('#studentForm input, #studentForm select').forEach(input => {
+            input.disabled = (input.id === 'f_last_edit_at') ? true : (mode === 'view');
+        });
+        if (mode === 'edit') toggleBoardingFields(); 
+        document.getElementById('btnSaveStudent').style.display = mode === 'view' ? 'none' : 'inline-block';
+        document.getElementById('formOverlay').style.display = 'flex'; 
+    }
+
+    function closeFormModal() { document.getElementById('formOverlay').style.display = 'none'; }
+    function closeConfirmModal() { document.getElementById('confirmOverlay').style.display = 'none'; }
+
+    let currentEmptyFields = [];
+    function validateAndSubmit() {
+        currentEmptyFields = []; let emptyNames = [];
+        for (let id in requiredFields) { if (!document.getElementById(id).value.trim()) { currentEmptyFields.push(id); emptyNames.push(requiredFields[id]); } }
+        if (currentEmptyFields.length > 0) { document.getElementById('confirmMessage').innerText = `必填项为空：\n${emptyNames.join(', ')}\n\n点击“确认为空”将自动填入“暂无”。`; document.getElementById('confirmOverlay').style.display = 'flex'; } 
+        else { submitData(); }
+    }
+
+    function confirmEmptyAndSubmit() { currentEmptyFields.forEach(id => document.getElementById(id).value = '暂无'); closeConfirmModal(); submitData(); }
+
+    function submitData() {
+        const payload = {};
+        ['custom_id', 'name', 'school_id', 'national_id', 'sex', 'enter_year', 'campus', 'current_class', 'subject', 'category', 'at_school', 'boarding_status', 'former_name', 'major', 'apartment', 'dormitory', 'remarks'].forEach(key => {
+            payload[key] = document.getElementById('f_' + key).value.trim();
+        });
+        const url = currentEditId ? `/api/students/${currentEditId}` : '/api/students';
+        fetch(url, { method: currentEditId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(res => res.json()).then(data => {
+            if(data.status === 'success') { alert('保存成功！'); closeFormModal(); loadStudents(currentPage); } 
+            else { alert(data.message); }
+        }).catch(err => alert('网络错误，请重试。'));
+    }
+
+    function downloadQueryResults() {
+        // 1. 智能判断：获取动态高级筛选的容器
+        const advContainer = document.getElementById('advRowsContainer');
+        // 如果容器存在，且包含子节点，且父面板没有被隐藏，则认为当前是高级模式
+        const isAdvancedMode = advContainer && advContainer.children.length > 0 && advContainer.closest('.card').style.display !== 'none';
+
+        let params = new URLSearchParams();
+
+        if (isAdvancedMode) {
+            // ================= 模式 A：动态高级筛选导出 =================
+            let conditions = [];
+            const rows = advContainer.querySelectorAll('.adv-row');
+
+            rows.forEach((row, index) => {
+                const logic = row.querySelector('.logic-select').value;
+                const field = row.querySelector('.field-select').value;
+                const op = row.querySelector('.op-select').value;
+
+                // 由于 handleFieldChange 可能会把 input 变成 select，这里使用复合选择器
+                const valElement = row.querySelector('.val-container input, .val-container select');
+                const val = valElement ? valElement.value.trim() : '';
+
+                if (val !== '') { // 只打包填写了有效值的条件
+                    conditions.push({
+                        logic: index === 0 ? '' : logic, // 第一行的逻辑词被隐藏，不传入
+                        field: field,
+                        op: op,
+                        value: val
+                    });
+                }
+            });
+
+            if (conditions.length === 0) {
+                if (!confirm("⚠️ 当前高级筛选未填入任何有效值，将导出全校所有学生数据，是否继续？")) return;
+            }
+
+            params.append('is_advanced', 'true');
+            // 将动态条件数组转化为 JSON 字符串传递给后端
+            params.append('adv_conditions', JSON.stringify(conditions));
+
+        } else {
+            // ================= 模式 B：普通查询导出 =================
+            const searchInput = document.getElementById('s_keyword') ? document.getElementById('s_keyword').value.trim() : '';
+            const campusFilter = document.getElementById('s_campus') ? document.getElementById('s_campus').value : '';
+            const yearFilter = document.getElementById('s_year') ? document.getElementById('s_year').value.trim() : '';
+            const classFilter = document.getElementById('s_class') ? document.getElementById('s_class').value.trim() : '';
+
+            if (!searchInput && (!campusFilter || campusFilter === '全部') && (!yearFilter || yearFilter === '全部') && (!classFilter || classFilter === '全部')) {
+                if (!confirm("⚠️ 当前未设置任何筛选条件，将导出全校所有学生数据，是否继续？")) return;
+            }
+
+            params.append('search', searchInput);
+            params.append('campus', campusFilter);
+            params.append('enter_year', yearFilter);
+            params.append('current_class', classFilter);
+            params.append('is_advanced', 'false');
+        }
+
+        // 2. 触发浏览器下载
+        window.location.href = `/api/students/export_query?${params.toString()}`;
+    }
+
+</script>
+{% endblock %}

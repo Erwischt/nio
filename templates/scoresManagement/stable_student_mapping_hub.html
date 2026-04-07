@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}配置学生教学班 - 校园数据平台{% endblock %}
+
+{% block head %}
+<style>
+    .container { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+    
+    .page-header { display: flex; align-items: center; margin-bottom: 20px; }
+    .back-btn { display: inline-flex; align-items: center; color: var(--apple-blue); text-decoration: none; font-weight: 500; font-size: 15px; margin-right: 20px; transition: 0.2s; }
+    .back-btn:hover { color: #0077ed; opacity: 0.8; }
+    h1 { font-size: 28px; font-weight: 600; margin: 0; color: var(--text-main); flex-grow: 1; }
+
+    .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 24px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 20px; }
+    
+    /* 顶部控制台 (严格对齐师资底表样式) */
+    .control-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 15px; }
+    .form-group { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+    .form-group input, .form-group select { padding: 8px 12px; border-radius: 8px; border: 1px solid #d2d2d7; font-size: 14px; outline: none; background-color: #fff; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--apple-blue); box-shadow: 0 0 0 3px rgba(0, 119, 237, 0.1); }
+
+    /* 空状态与上传区 */
+    .empty-state { text-align: center; padding: 60px 20px; border: 2px dashed #d2d2d7; border-radius: 12px; background: #fafafa; margin-top: 20px; transition: 0.3s; }
+    .empty-state:hover { border-color: var(--apple-blue); background: #f0f7ff; }
+    .empty-icon { font-size: 48px; margin-bottom: 15px; }
+    .empty-title { font-size: 18px; font-weight: 600; color: var(--text-main); margin-bottom: 10px; }
+    .empty-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
+
+    /* 全景矩阵表格 (核心样式) */
+    .matrix-container { overflow-x: auto; overflow-y: auto; max-height: 65vh; border-radius: 8px; border: 1px solid #e5e5ea; display: none; }
+    .matrix-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1500px; font-size: 13px; }
+    .matrix-table th, .matrix-table td { padding: 10px 12px; text-align: center; border-bottom: 1px solid #e5e5ea; border-right: 1px solid #e5e5ea; white-space: nowrap; }
+    .matrix-table th { background-color: #f5f5f7; font-weight: 600; color: var(--text-secondary); position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #d2d2d7; }
+    
+    /* 冻结前三列：内部编号、姓名、选科 */
+    .matrix-table th:nth-child(1), .matrix-table td:nth-child(1) { position: sticky; left: 0; background-color: #f9f9fb; z-index: 11; width: 120px; font-weight: 600; color: #86868b; }
+    .matrix-table th:nth-child(2), .matrix-table td:nth-child(2) { position: sticky; left: 120px; background-color: #f9f9fb; z-index: 11; width: 90px; font-weight: 600; color: var(--text-main); }
+    .matrix-table th:nth-child(3), .matrix-table td:nth-child(3) { position: sticky; left: 210px; background-color: #f9f9fb; z-index: 11; width: 90px; border-right: 2px solid #d2d2d7; color: #86868b; }
+    /* 修复左上角三个表头的层级，防止向下滚动时被覆盖 */
+    .matrix-table th:nth-child(1), .matrix-table th:nth-child(2), .matrix-table th:nth-child(3) { z-index: 12; background-color: #e8e8ed; }
+
+    .btn-primary { background-color: var(--apple-blue); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary:hover { background-color: #0077ed; transform: translateY(-1px); }
+    /* 新增：次级按钮样式 (用于下载模板) */
+    .btn-secondary { background-color: #e8e8ed; color: var(--text-main); border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+    .btn-secondary:hover { background-color: #d2d2d7; }
+
+    .btn-danger { background-color: #fff0f0; color: var(--apple-red); border: 1px solid #ffcaca; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-danger:hover { background-color: #ffe5e5; }
+
+    /* 行内编辑单元格样式 */
+    .editable-cell { cursor: pointer; transition: background-color 0.2s; }
+    .editable-cell:hover { background-color: #eef5ff; }
+    .editable-cell.editing { padding: 0; }
+    .inline-input { width: 100%; height: 100%; padding: 10px; border: 2px solid var(--apple-blue); outline: none; font-size: 13px; text-align: center; box-sizing: border-box; background: #fff; }
+
+    /* 底部危险操作区 */
+    .danger-zone { margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e5ea; display: flex; justify-content: space-between; align-items: center; display: none; }
+    
+    .loading-text { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 15px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <a href="/scoresManagement/index" onclick="window.history.back(); return false;" class="back-btn">‹ 返回成绩大厅</a>
+        <h1>⚙️ 学生教学班配置中心</h1>
+    </div>
+
+    <div class="card control-panel">
+        <div class="form-group">
+            <label>🎯 目标年级</label>
+            <input type="text" id="grade_input" placeholder="输入年份如: 2024" style="width: 140px;">
+        </div>
+        <div class="form-group">
+            <label>🗓️ 配置学期</label>
+            <select id="semester_select" style="width: 130px;">
+                <option value="高一上">高一上</option>
+                <option value="高一下">高一下</option>
+                <option value="高二上">高二上</option>
+                <option value="高二下">高二下</option>
+                <option value="高三上">高三上</option>
+                <option value="高三下">高三下</option>
+            </select>
+        </div>
+        <button class="btn-primary" onclick="loadMatrixData()">🔍 检索数据</button>
+        
+        <a href="/static/files/学生教学班模板.xlsx" download class="btn-secondary" style="margin-left: auto; background: #f1f5f9; color: var(--apple-blue); font-weight: 600;">
+            📄 下载学生教学班模板
+        </a>
+
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden; border: 1px solid #e5e5ea;">
+        <div id="loadingView" class="loading-text" style="display: none;">
+            ⏳ 正在拉取教学班数据...
+        </div>
+
+        <div id="emptyView" class="empty-state" style="margin: 20px;">
+            <div class="empty-icon">📂</div>
+            <div class="empty-title">尚未拉取或该学期无教学班数据</div>
+            <div class="empty-desc">
+                请点击上方“检索数据”。如确无数据，请先下载右上方模板，在本地完成 <strong>Sheet2</strong> 的九科排班填写后上传。<br>
+                系统将自动进行初始化步骤。
+            </div>
+            <input type="file" id="excelUpload" accept=".xlsx, .xls" style="display: none;" onchange="handleExcelUpload()">
+            <button class="btn-primary" onclick="triggerUpload()">📤 极速上传配置 Excel</button>
+        </div>
+
+        <div id="matrixView" class="matrix-container">
+            <table class="matrix-table" id="matrixTable">
+                <thead>
+                    <tr>
+                        <th>🔒 内部编号</th>
+                        <th>🔒 姓名</th>
+                        <th>🔒 选科</th>
+                        <th>语文</th>
+                        <th>数学</th>
+                        <th>英语</th>
+                        <th>物理</th>
+                        <th>化学</th>
+                        <th>生物</th>
+                        <th>政治</th>
+                        <th>历史</th>
+                        <th>地理</th>
+                    </tr>
+                </thead>
+                <tbody id="matrixBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="dangerZone" class="card danger-zone">
+        <div style="font-size: 13px; color: var(--text-secondary);">
+            💡 <strong>微调</strong>：在上方表格中直接点击对应的学科单元格，即可就地修改并保存。<br>
+            ⚠️ <strong>重置</strong>：如需应对大规模重组，请使用右侧重新上传覆盖。
+        </div>
+        <div>
+            <button class="btn-danger" style="background: #ffe5e5; color: #ff3b30; border: 1px solid #ffcce0; font-weight: 600; padding: 8px 16px; border-radius: 8px; cursor: pointer;" onclick="triggerUpload()">
+                🔄 重新上传 Excel 覆盖本学期
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // 对应九科的大宽表后端字段
+    const subjectFields = [
+        'chinese_class', 'math_class', 'english_class', 
+        'physics_class', 'chemistry_class', 'biology_class', 
+        'politics_class', 'history_class', 'geography_class'
+    ];
+
+    // 触发隐藏的文件选择器
+    function triggerUpload() {
+        const grade = document.getElementById('grade_input').value.trim();
+        if (!grade) {
+            alert("⚠️ 请先在顶部输入目标年级！");
+            return;
+        }
+        document.getElementById('excelUpload').click();
+    }
+
+    // 拉取全景矩阵数据
+    function loadMatrixData() {
+        const grade = document.getElementById('grade_input').value.trim();
+        const semester = document.getElementById('semester_select').value;
+        
+        if (!grade) {
+            alert("请输入目标年级，如 2024");
+            return;
+        }
+        
+        document.getElementById('loadingView').style.display = 'block';
+        document.getElementById('emptyView').style.display = 'none';
+        document.getElementById('matrixView').style.display = 'none';
+        document.getElementById('dangerZone').style.display = 'none';
+
+        fetch(`/api/scores/student_course_mapping?grade=${grade}&semester=${semester}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('loadingView').style.display = 'none';
+                if (data.status === 'success' && data.data.length > 0) {
+                    renderMatrix(data.data);
+                    document.getElementById('matrixView').style.display = 'block';
+                    document.getElementById('dangerZone').style.display = 'flex';
+                } else {
+                    document.getElementById('emptyView').style.display = 'block';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('loadingView').innerHTML = '❌ 加载失败，请检查网络或联系管理员。';
+            });
+    }
+
+    // 渲染九科大宽表
+    function renderMatrix(dataList) {
+        const tbody = document.getElementById('matrixBody');
+        tbody.innerHTML = '';
+
+        dataList.forEach(row => {
+            const tr = document.createElement('tr');
+            
+            // 🔒 冻结的三列
+            let html = `
+                <td>${row.custom_id || ''}</td>
+                <td>${row.name || ''}</td>
+                <td>${row.subject_track || ''}</td>
+            `;
+
+            // ✍️ 九科动态可编辑列
+            subjectFields.forEach(field => {
+                const val = row[field] || '';
+                html += `<td class="editable-cell" onclick="enableInlineEdit(this, '${row.custom_id}', '${field}')">${val}</td>`;
+            });
+
+            tr.innerHTML = html;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ⚡ 唤起行内闪电编辑
+    function enableInlineEdit(td, customId, field) {
+        if (td.classList.contains('editing')) return; 
+        
+        const originalValue = td.innerText.trim();
+        td.classList.add('editing');
+        
+        td.innerHTML = `<input type="text" class="inline-input" value="${originalValue}" placeholder="无">`;
+        const input = td.querySelector('input');
+        input.focus();
+
+        // 失去焦点或回车均保存
+        input.addEventListener('blur', () => saveInlineEdit(td, customId, field, input.value, originalValue));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                td.innerHTML = originalValue;
+                td.classList.remove('editing');
+            }
+        });
+    }
+
+    // 保存微调修改到后端
+    function saveInlineEdit(td, customId, field, newValue, originalValue) {
+        newValue = newValue.trim();
+        if (newValue === originalValue) {
+            td.innerHTML = newValue;
+            td.classList.remove('editing');
+            return;
+        }
+
+        const grade = document.getElementById('grade_input').value.trim();
+        const semester = document.getElementById('semester_select').value;
+
+        td.innerHTML = newValue;
+        td.classList.remove('editing');
+        td.style.color = '#ccc'; 
+
+        fetch(`/api/scores/student_course_mapping/update_single`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ grade, semester, custom_id: customId, field, value: newValue })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                td.style.color = 'var(--text-main)'; 
+            } else {
+                alert('保存失败: ' + data.message);
+                td.innerHTML = originalValue; 
+                td.style.color = 'var(--text-main)';
+            }
+        })
+        .catch(err => {
+            alert('网络异常');
+            td.innerHTML = originalValue;
+            td.style.color = 'var(--text-main)';
+        });
+    }
+
+    // 📤 上传 Excel 极速覆盖
+    function handleExcelUpload() {
+        const fileInput = document.getElementById('excelUpload');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const grade = document.getElementById('grade_input').value.trim();
+        const semester = document.getElementById('semester_select').value;
+
+        if (!confirm(`⚠️ 危险操作！\n您确定要覆盖【${grade}级 - ${semester}】的全部学生教学班数据吗？\n(提示：未在 Excel 中的学生，其选课数据将被清空！)`)) {
+            fileInput.value = '';
+            return;
+        }
+
+        // Apple 风格全屏遮罩防误触
+        let loadingOverlay = document.getElementById('loadingOverlay');
+        if (!loadingOverlay) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loadingOverlay';
+            loadingOverlay.innerHTML = `
+                <div style="background: rgba(0,0,0,0.8); color: white; padding: 20px 40px; border-radius: 12px; font-size: 16px; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 15px; z-index: 10000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                    <div style="font-size: 24px; animation: pulse 1.5s infinite;">⏳</div>
+                    <div>正在极速解析九科矩阵并覆写数据库，请勿关闭页面...</div>
+                </div>
+                <style>@keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }</style>
+            `;
+            loadingOverlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.5); backdrop-filter: blur(3px); z-index: 9999; display: flex; justify-content: center; align-items: center;';
+            document.body.appendChild(loadingOverlay);
+        } else {
+            loadingOverlay.style.display = 'flex';
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('grade', grade);
+        formData.append('semester', semester);
+
+        fetch('/api/scores/student_course_mapping/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            loadingOverlay.style.display = 'none';
+            fileInput.value = '';
+            if (data.status === 'success') {
+                alert(`✅ 导入成功！\n共覆盖初始化了 ${data.update_count} 名学生的九科矩阵数据。`);
+                loadMatrixData(); 
+            } else {
+                alert(`❌ 导入失败: ${data.message}`);
+            }
+        })
+        .catch(err => {
+            loadingOverlay.style.display = 'none';
+            fileInput.value = '';
+            alert('❌ 上传中断，请检查网络或联系技术支持。');
+        });
+    }
+</script>
+{% endblock %}
