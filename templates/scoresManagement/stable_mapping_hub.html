@@ -192,7 +192,7 @@
         dataView.classList.add('hidden');
         
         // 发起拉取请求
-        fetch(`/api/scores/stable_mapping?grade=${grade}&semester=${encodeURIComponent(semester)}`)
+        fetch(`/scoresManagement/api/stable_mapping?grade=${grade}&semester=${encodeURIComponent(semester)}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
@@ -275,7 +275,7 @@
 
         spanElement.innerHTML = `<span style="color:#86868b; font-size:12px;">🔄 同步中...</span>`;
 
-        fetch('/api/scores/update_stable_mapping', {
+        fetch('/scoresManagement/api/update_stable_mapping', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -350,7 +350,7 @@
         formData.append('grade', currentGrade);
         formData.append('semester', currentSemester);
 
-        fetch('/api/scores/upload_stable_mapping', {
+        fetch('/scoresManagement/api/upload_stable_mapping', {
             method: 'POST',
             body: formData
         })

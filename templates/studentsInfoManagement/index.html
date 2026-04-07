@@ -260,7 +260,7 @@
             });
         }
 
-        fetch('/api/students/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        fetch('/students/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(res => {
             if(res.status === 401) { alert("会话过期，请重新登录！"); window.location.href='/login'; return null; }
             return res.json();
@@ -296,7 +296,7 @@
 
     function deleteStudent(id) {
         if (confirm("确定删除该记录吗？")) {
-            fetch(`/api/students/${id}`, { method: 'DELETE' }).then(res => res.json()).then(data => { if(data.status === 'success') loadStudents(currentPage); })
+            fetch(`/students/api/${id}`, { method: 'DELETE' }).then(res => res.json()).then(data => { if(data.status === 'success') loadStudents(currentPage); })
         }
     }
 
@@ -349,7 +349,7 @@
         formData.append('file', file);
 
         // 发起后端请求
-        fetch('/api/students/import', { method: 'POST', body: formData })
+        fetch('/students/api/import', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
             // 后端返回结果，强制将进度拉满到 100%

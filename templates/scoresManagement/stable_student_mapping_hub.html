@@ -179,7 +179,7 @@
         document.getElementById('matrixView').style.display = 'none';
         document.getElementById('dangerZone').style.display = 'none';
 
-        fetch(`/api/scores/student_course_mapping?grade=${grade}&semester=${semester}`)
+        fetch(`/scoresManagement/api/student_course_mapping?grade=${grade}&semester=${semester}`)
             .then(res => res.json())
             .then(data => {
                 document.getElementById('loadingView').style.display = 'none';
@@ -261,7 +261,7 @@
         td.classList.remove('editing');
         td.style.color = '#ccc'; 
 
-        fetch(`/api/scores/student_course_mapping/update_single`, {
+        fetch(`/scoresManagement/api/student_course_mapping/update_single`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ grade, semester, custom_id: customId, field, value: newValue })
@@ -320,7 +320,7 @@
         formData.append('grade', grade);
         formData.append('semester', semester);
 
-        fetch('/api/scores/student_course_mapping/upload', {
+        fetch('/scoresManagement/api/student_course_mapping/upload', {
             method: 'POST',
             body: formData
         })

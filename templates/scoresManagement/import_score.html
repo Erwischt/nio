@@ -233,7 +233,7 @@
         formData.append('score_file', file);
 
         // 发送给后端的 app.py
-        fetch('/api/upload_scores', {
+        fetch('/scoresManagement/api/upload_scores', {
             method: 'POST',
             body: formData
         })

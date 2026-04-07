@@ -126,7 +126,7 @@
     });
 
     function loadMappingData() {
-        fetch(`/api/scores/teacher_mapping?exam_id=${examId}&grade=${gradeYear}`)
+        fetch(`/scoresManagement/api/teacher_mapping?exam_id=${examId}&grade=${gradeYear}`)
             .then(res => res.json())
             .then(data => {
                 if(data.success) {
@@ -200,7 +200,7 @@
         // 显示加载状态
         spanElement.innerHTML = `<span style="color:#86868b;">🔄 校验中...</span>`;
 
-        fetch('/api/scores/update_teacher_mapping', {
+        fetch('/scoresManagement/api/teacher_mapping', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

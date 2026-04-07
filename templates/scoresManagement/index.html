@@ -112,7 +112,7 @@
         container.innerHTML = `<div style="text-align: center; padding: 40px; color: #86868b;">⏳ 正在加载 ${gradeYear} 级的考试数据...</div>`;
 
         // 请求 URL 拼接上 semester 参数
-        fetch(`/api/scores/list?grade_year=${gradeYear}&semester=${encodeURIComponent(semester)}`)
+        fetch(`/scoresManagement/api/list?grade_year=${gradeYear}&semester=${encodeURIComponent(semester)}`)
             .then(res => {
                 if (res.status === 401) { window.location.href = '/login'; return null; }
                 return res.json();
