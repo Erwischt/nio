@@ -134,8 +134,18 @@
                 <div class="form-section">🎓 学籍与学术信息</div>
                 <div class="form-group"><label>校区 *</label><select id="f_campus"><option value="">请选择</option><option value="校本部">校本部</option><option value="礼贤校区">礼贤校区</option><option value="暂无" style="display:none;">暂无</option></select></div>
                 <div class="form-group"><label>入学年份 *</label><input type="text" id="f_enter_year" maxlength="4" placeholder="例如：2026"></div>
-                <div class="form-group"><label>当前班级 *</label><input type="text" id="f_current_class" maxlength="2" placeholder="例如：01 或 12"></div>
+                <div class="form-group"><label>当前班级 *</label><input type="text" id="f_current_class" maxlength="2" placeholder="例如：1 或 12"></div>
                 <div class="form-group"><label>选科 *</label><input type="text" id="f_subject" placeholder="例如：物化生"></div>
+                <div class="form-group"><label>外语种类 *</label>
+                    <select id="f_language_type">
+                        <option value="英语">英语</option>
+                        <option value="日语">日语</option>
+                        <option value="俄语">俄语</option>
+                        <option value="德语">德语</option>
+                        <option value="法语">法语</option>
+                        <option value="西班牙语">西班牙语</option>
+                    </select>
+                </div>
                 <div class="form-group"><label>类别 *</label><select id="f_category"><option value="">请选择</option><option value="普通类">普通类</option><option value="艺术类">艺术类</option><option value="体育类">体育类</option><option value="暂无" style="display:none;">暂无</option></select></div>
                 <div class="form-group"><label>专业</label><input type="text" id="f_major" placeholder="仅艺体生填写"></div>
                 <div class="form-group"><label>在校情况 *</label><select id="f_at_school"><option value="">请选择</option><option value="正常在校">正常在校</option><option value="长期不在校">长期不在校</option><option value="暂无" style="display:none;">暂无</option></select></div>
@@ -187,6 +197,7 @@
         'campus': { label: '校区', type: 'select', options: ['校本部', '礼贤校区'] },
         'current_class': { label: '班级', type: 'text' },
         'subject': { label: '选科', type: 'text' },
+        'language_type': {label: '外语种类', type: 'select', options: ['英语', '日语', '俄语', '德语', '法语', '西班牙语'] },
         'category': { label: '类别', type: 'select', options: ['普通类', '艺术类', '体育类'] },
         'at_school': { label: '在校情况', type: 'select', options: ['正常在校', '长期不在校'] },
         'boarding_status': { label: '住宿情况', type: 'select', options: ['住宿', '走读'] },
@@ -231,16 +242,21 @@
     }
 
     function handleFieldChange(selectEl) {
-        const config = advFields[selectEl.value];
-        const valContainer = selectEl.parentElement.querySelector('.val-container');
-        if(config.type === 'select') {
-            let opts = '<option value="">请选择...</option>';
-            config.options.forEach(o => opts += `<option value="${o}">${o}</option>`);
-            valContainer.innerHTML = `<select class="val-input">${opts}</select>`;
-        } else {
-            valContainer.innerHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
-        }
+    const config = advFields[selectEl.value];
+    const valContainer = selectEl.parentElement.querySelector('.val-container');
+
+    // 如果该字段配置了 type 为 select，则渲染下拉框
+    if(config.type === 'select') {
+        let opts = '<option value="">请选择...</option>';
+        config.options.forEach(o => {
+            opts += `<option value="${o}">${o}</option>`;
+        });
+        valContainer.innerHTML = `<select class="val-input">${opts}</select>`;
+    } else {
+        // 否则渲染普通的文本输入框
+        valContainer.innerHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
     }
+}
 
     function changePage(p) { if(p >= 1 && p <= totalPages) loadStudents(p); }
 
@@ -379,7 +395,7 @@
         });
     }
 
-    const requiredFields = { 'f_name':'姓名', 'f_enter_year':'入学年份', 'f_campus':'校区', 'f_current_class':'当前班级', 'f_subject':'选科', 'f_category':'类别', 'f_at_school':'在校情况', 'f_boarding_status':'住宿情况' };
+    const requiredFields = { 'f_name':'姓名', 'f_enter_year':'入学年份', 'f_campus':'校区', 'f_current_class':'当前班级', 'f_subject':'选科', 'f_language_type':'外语种类', 'f_category':'类别', 'f_at_school':'在校情况', 'f_boarding_status':'住宿情况' };
 
     function toggleBoardingFields() {
         const status = document.getElementById('f_boarding_status').value;
@@ -409,9 +425,12 @@
         document.getElementById('modalSubtitle').style.display = mode === 'view' ? 'none' : 'block';
         const s = allStudents.find(x => x.id === id);
         if (!s) return;
-        ['custom_id','school_id','national_id','name','sex','former_name','campus','enter_year','current_class','subject','category','major','at_school','boarding_status','apartment','dormitory','remarks','last_edit_at'].forEach(k => {
+        ['custom_id','school_id','national_id','name','sex','former_name','campus','enter_year','current_class','subject', 'language_type','category','major','at_school','boarding_status','apartment','dormitory','remarks','last_edit_at'].forEach(k => {
             const el = document.getElementById('f_' + k);
-            if(el) el.value = s[k] || (k === 'last_edit_at' ? '无历史修改记录' : '');
+            if(el) {
+                // 如果是新增且字段为空，默认选英语
+                el.value = s[k] || (k === 'language_type' ? '英语' : (k === 'last_edit_at' ? '无历史修改记录' : ''));
+            }
         });
         document.querySelectorAll('#studentForm input, #studentForm select').forEach(input => {
             input.disabled = (input.id === 'f_last_edit_at') ? true : (mode === 'view');
@@ -436,10 +455,10 @@
 
     function submitData() {
         const payload = {};
-        ['custom_id', 'name', 'school_id', 'national_id', 'sex', 'enter_year', 'campus', 'current_class', 'subject', 'category', 'at_school', 'boarding_status', 'former_name', 'major', 'apartment', 'dormitory', 'remarks'].forEach(key => {
+        ['custom_id', 'name', 'school_id', 'national_id', 'sex', 'enter_year', 'campus', 'current_class', 'subject','language_type', 'category', 'at_school', 'boarding_status', 'former_name', 'major', 'apartment', 'dormitory', 'remarks'].forEach(key => {
             payload[key] = document.getElementById('f_' + key).value.trim();
         });
-        const url = currentEditId ? `/api/students/${currentEditId}` : '/api/students';
+        const url = currentEditId ? `/students/api/${currentEditId}` : '/students/api';
         fetch(url, { method: currentEditId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(res => res.json()).then(data => {
             if(data.status === 'success') { alert('保存成功！'); closeFormModal(); loadStudents(currentPage); } 
@@ -506,7 +525,7 @@
         }
 
         // 2. 触发浏览器下载
-        window.location.href = `/api/students/export_query?${params.toString()}`;
+        window.location.href = `/students/api/export_query?${params.toString()}`;
     }
 
 </script>

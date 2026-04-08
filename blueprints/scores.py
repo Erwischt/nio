@@ -100,65 +100,134 @@ def list_exams():
 @scores_bp.route('/api/upload_scores', methods=['POST'])
 @login_required
 def upload_scores():
-    """成绩落盘并生成师资快照"""
+    """
+    【优化版】接收成绩 Excel 并落盘
+    通过内存预加载技术消除循环 SQL 查询，支持数千人规模的秒级导入
+    """
     current_editor = session.get('real_name', '未知操作者')
+
     try:
+        # 1. 接收基础表单数据
         exam_name = request.form.get('exam_name')
         grade = request.form.get('grade')
         semester = request.form.get('semester')
         exam_date = request.form.get('exam_date')
         exam_type = request.form.get('exam_type')
 
-        exam_id = f"EX_{grade}_{int(time.time())}"
-        file = request.files.get('score_file')
+        if not grade or not semester or not exam_name:
+            return jsonify({'success': False, 'message': '表单参数缺失'})
 
-        df = pd.read_excel(file, sheet_name=1)  # 强制读取Sheet2
+        exam_id = f"EX_{grade}_{int(time.time())}"
+
+        # 2. 接收并验证 Excel 文件
+        file = request.files.get('score_file')
+        if not file:
+            return jsonify({'success': False, 'message': '未找到上传文件'})
+
+        try:
+            # 强制读取 Sheet2
+            df = pd.read_excel(file, sheet_name=1)
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'Excel 解析错误: {str(e)}'})
+
+        # 3. 建立数据库连接
         conn = get_scores_db_connection(grade)
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
 
-        # 1. 考务元数据
+        # ================= 核心优化：内存预加载 =================
+        # 💡 优化点：一次性取出该学期所有学生的映射关系，避免在循环中重复查询数据库
+        # 我们需要 custom_id 作为 Key 来匹配内部编号，需要 name 作为 Key 来匹配姓名
+        cursor.execute(
+            "SELECT custom_id, name FROM stable_student_course_mapping WHERE semester = ?",
+            (semester,)
+        )
+        mapping_rows = cursor.fetchall()
+
+        # 构造内存字典：{ '内部编号': '内部编号', ... } 和 { '学生姓名': '内部编号', ... }
+        id_map = {str(row['custom_id']).strip(): row['custom_id'] for row in mapping_rows}
+        name_map = {}
+        duplicate_names = set()
+
+        for row in mapping_rows:
+            name = str(row['name']).strip()
+            if name in name_map:
+                duplicate_names.add(name)
+            name_map[name] = row['custom_id']
+        # ======================================================
+
+        # 4. 考务元数据落盘
         cursor.execute('''
             INSERT INTO exam_metadata (exam_id, exam_name, exam_date, semester, exam_type, creator, is_analyzed)
             VALUES (?, ?, ?, ?, ?, ?, 0)
         ''', (exam_id, exam_name, exam_date, semester, exam_type, current_editor))
 
-        # 2. 成绩解析（简化的循环逻辑，需匹配分库表结构）
+        # 5. 内存匹配与成绩清洗
         subject_columns = ['语文', '数学', '英语', '物理', '化学', '生物', '政治', '历史', '地理']
         raw_scores_data = []
-        for _, row in df.iterrows():
+
+        for index, row in df.iterrows():
             internal_id = str(row.get('内部编号', '')).strip()
             student_name = str(row.get('姓名', '')).strip()
-            if not student_name and internal_id in ('', 'nan', 'None'): continue
 
-            # 身份匹配逻辑
-            cursor.execute(
-                "SELECT custom_id FROM stable_student_course_mapping WHERE (custom_id = ? OR name = ?) AND semester = ?",
-                (internal_id, student_name, semester))
-            res = cursor.fetchone()
-            if not res: continue
+            if not student_name and internal_id in ('', 'nan', 'None'):
+                continue
 
-            scores = [row.get(subj) if not pd.isna(row.get(subj)) else None for subj in subject_columns]
-            raw_scores_data.append([exam_id, res['custom_id']] + scores)
+            # 优先使用内部编号匹配
+            custom_id = None
+            if internal_id and internal_id in id_map:
+                custom_id = id_map[internal_id]
+            # 编号匹配失败，尝试姓名匹配
+            elif student_name in name_map:
+                if student_name in duplicate_names:
+                    conn.rollback()
+                    return jsonify(
+                        {'success': False, 'message': f'导入中断：检测到重名学生【{student_name}】，必须填写内部编号！'})
+                custom_id = name_map[student_name]
 
+            if not custom_id:
+                conn.rollback()
+                return jsonify(
+                    {'success': False, 'message': f'第{index + 2}行匹配失败：该生不在【{semester}】教学班名单中。'})
+
+            # 分数清洗
+            scores = []
+            for subj in subject_columns:
+                val = row.get(subj, None)
+                if pd.isna(val) or str(val).strip() == '':
+                    scores.append(None)
+                else:
+                    try:
+                        scores.append(float(val))
+                    except:
+                        scores.append(None)
+
+            raw_scores_data.append([exam_id, custom_id] + scores)
+
+        # 批量插入（保持高效）
         cursor.executemany('''
-            INSERT INTO students_raw_scores (exam_id, custom_id, chinese, math, english, physics, chemistry, biology, politics, history, geography)
+            INSERT INTO students_raw_scores 
+            (exam_id, custom_id, chinese, math, english, physics, chemistry, biology, politics, history, geography)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', raw_scores_data)
 
-        # 3. 师资快照克隆
+        # 6. 克隆师资快照
         cursor.execute('''
-            INSERT INTO dynamic_class_mapping (exam_id, campus, class_type, class_name, subject, teacher_name, teacher_uid)
-            SELECT ?, campus, class_type, class_name, subject, teacher_name, teacher_uid FROM stable_class_mapping WHERE semester = ?
+            INSERT INTO dynamic_class_mapping 
+            (exam_id, campus, class_type, class_name, subject, teacher_name, teacher_uid)
+            SELECT ?, campus, class_type, class_name, subject, teacher_name, teacher_uid
+            FROM stable_class_mapping
+            WHERE semester = ?
         ''', (exam_id, semester))
 
         conn.commit()
         conn.close()
+
         return jsonify({'success': True, 'message': '导入成功', 'exam_id': exam_id})
+
     except Exception as e:
         if 'conn' in locals(): conn.rollback()
-        return jsonify({'success': False, 'message': str(e)})
-
+        return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'})
 
 # ================= API 接口：师资配置与碰对 =================
 

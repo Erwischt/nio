@@ -62,13 +62,16 @@
     .btn-submit { padding: 10px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; background: var(--apple-blue); color: white; transition: 0.2s; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3); }
     .btn-submit:hover { background: #0077ed; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0, 113, 227, 0.4); }
     .btn-submit:disabled { background: #a1a1a6; box-shadow: none; cursor: not-allowed; transform: none; }
+    .btn-secondary { background-color: #e8e8ed; color: var(--text-main); border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+    .btn-secondary:hover { background-color: #d2d2d7; }
+
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container">
     <div class="page-header">
-        <a href="/scoresManagement/index" onclick="window.history.back(); return false;" class="back-btn">‹ 返回成绩大厅</a>
+        <a href="/scoresManagement/index" onclick="window.history.back(); return false;" class="back-btn">‹ 返回学业成绩管理</a>
         <h1>新建考试导入</h1>
     </div>
 
@@ -137,8 +140,8 @@
             <div class="card-title">
                 <span>📥</span> 第二步：上传《原始成绩表》
                 <div class="card-title-right">
-                    <a href="{{ url_for('static', filename='templates_excel/成绩导入模板.xlsx') }}" download>
-                        📄 下载最新 Excel 模板
+                    <a href="{{ url_for('static', filename='files/成绩导入模板.xlsx') }}" download class="btn-secondary">
+                        📄 下载成绩导入模板
                     </a>
                 </div>
             </div>

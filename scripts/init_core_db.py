@@ -43,6 +43,7 @@ def setup_databases():
             campus VARCHAR(10) NOT NULL,
             current_class VARCHAR(5) NOT NULL,
             subject VARCHAR(10) NOT NULL,
+            language_type VARCHAR(8) NOT NULL DEFAULT '英语',
             category VARCHAR(10) NOT NULL,
             major VARCHAR(10),
             at_school VARCHAR(10) NOT NULL,

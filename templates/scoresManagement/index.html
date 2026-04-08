@@ -52,7 +52,7 @@
 <div class="container">
     <div class="page-header">
         <a href="/" class="back-btn">‹ 返回主页</a>
-        <h1>成绩分析大厅</h1>
+        <h1>学业成绩管理</h1>
     </div>
 
     <div class="card" style="display: flex; gap: 15px; align-items: center; padding: 15px 20px;">
@@ -79,7 +79,7 @@
                 💡 提示：日常请在此维护教学班与师资底表，考务大考请使用新建考试流水线。
             </div>
             <div style="display: flex; gap: 10px;">
-                <a href="/scoresManagement/stable_student_mapping_hub" class="btn-secondary">⚙️ 配置学生教学班</a>
+                <a href="{{ url_for('scores.scores_stable_student_mapping_hub') }}" class="btn-secondary">⚙️ 配置学生教学班</a>
 
                 <a href="/scoresManagement/stable_mapping_hub" class="btn-secondary">⚙️ 配置师资分布</a>
 
