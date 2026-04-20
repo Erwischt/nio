@@ -1,9 +1,12 @@
 import sqlite3
 import os
 import time
+import re
 import pandas as pd
+from contextlib import closing
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from utils.decorators import login_required
+
 
 # 定义蓝图
 scores_bp = Blueprint('scores', __name__)
@@ -20,6 +23,8 @@ USERS_DB_FILE = os.path.join(CORE_DB_DIR, 'users.db')
 
 def get_scores_db_connection(grade):
     """动态路由：根据年级连接到对应的成绩物理分库"""
+    if not grade or not re.match(r'^\d{4}$', str(grade)):
+        raise ValueError("非法的年级参数")
     db_path = os.path.join(SCORES_DB_DIR, f'scores_{grade}.db')
     if not os.path.exists(db_path):
         raise FileNotFoundError(f"未找到 {grade} 级的分库文件，请先初始化！")
@@ -91,17 +96,16 @@ def list_exams():
         return jsonify({"status": "error", "message": "未指定年级"})
 
     try:
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        query = "SELECT * FROM exam_metadata"
-        params = []
-        if semester != '全部':
-            query += " WHERE semester = ?"
-            params.append(semester)
-        query += " ORDER BY exam_date DESC"
-        cursor.execute(query, params)
-        exams = [dict(row) for row in cursor.fetchall()]
-        conn.close()
+        with closing(get_scores_db_connection(grade)) as conn:
+            cursor = conn.cursor()
+            query = "SELECT * FROM exam_metadata"
+            params = []
+            if semester != '全部':
+                query += " WHERE semester = ?"
+                params.append(semester)
+            query += " ORDER BY exam_date DESC"
+            cursor.execute(query, params)
+            exams = [dict(row) for row in cursor.fetchall()]
         return jsonify({"status": "success", "data": exams})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
@@ -140,118 +144,112 @@ def upload_scores():
         except Exception as e:
             return jsonify({'success': False, 'message': f'Excel 解析错误: {str(e)}'})
 
-        # 3. 建立数据库连接
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION;")
+        # 3. 建立数据库连接并执行自动事务管理
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
 
-        # ================= 核心优化：内存预加载 =================
-        # 💡 优化点：一次性取出该学期所有学生的映射关系，避免在循环中重复查询数据库
-        # 我们需要 custom_id 作为 Key 来匹配内部编号，需要 name 作为 Key 来匹配姓名
-        cursor.execute(
-            "SELECT custom_id, name FROM stable_student_course_mapping WHERE semester = ?",
-            (semester,)
-        )
-        mapping_rows = cursor.fetchall()
+                # ================= 核心优化：内存预加载 =================
+                cursor.execute(
+                    "SELECT custom_id, name FROM stable_student_course_mapping WHERE semester = ?",
+                    (semester,)
+                )
+                mapping_rows = cursor.fetchall()
 
-        # 构造内存字典：{ '内部编号': '内部编号', ... } 和 { '学生姓名': '内部编号', ... }
-        id_map = {str(row['custom_id']).strip(): row['custom_id'] for row in mapping_rows}
-        name_map = {}
-        duplicate_names = set()
+                # 构造内存字典
+                id_map = {str(row['custom_id']).strip(): row['custom_id'] for row in mapping_rows}
+                name_map = {}
+                duplicate_names = set()
 
-        for row in mapping_rows:
-            name = str(row['name']).strip()
-            if name in name_map:
-                duplicate_names.add(name)
-            name_map[name] = row['custom_id']
-        # ======================================================
+                for row in mapping_rows:
+                    name = str(row['name']).strip()
+                    if name in name_map:
+                        duplicate_names.add(name)
+                    name_map[name] = row['custom_id']
+                # ======================================================
 
-        # 4. 考务元数据落盘
-        cursor.execute('''
-            INSERT INTO exam_metadata (exam_id, exam_name, exam_date, semester, exam_type, creator, is_analyzed)
-            VALUES (?, ?, ?, ?, ?, ?, 0)
-        ''', (exam_id, exam_name, exam_date, semester, exam_type, current_editor))
+                # 4. 考务元数据落盘
+                cursor.execute('''
+                    INSERT INTO exam_metadata (exam_id, exam_name, exam_date, semester, exam_type, creator, is_analyzed)
+                    VALUES (?, ?, ?, ?, ?, ?, 0)
+                ''', (exam_id, exam_name, exam_date, semester, exam_type, current_editor))
 
-        # 5. 内存匹配与成绩清洗
-        subject_columns = ['语文', '数学', '英语', '物理', '化学', '生物', '政治', '历史', '地理']
-        raw_scores_data = []
+                # 5. 内存匹配与成绩清洗
+                subject_columns = ['语文', '数学', '英语', '物理', '化学', '生物', '政治', '历史', '地理']
+                raw_scores_data = []
 
-        for index, row in df.iterrows():
-            internal_id = str(row.get('内部编号', '')).strip()
-            student_name = str(row.get('姓名', '')).strip()
+                for index, row in df.iterrows():
+                    internal_id = str(row.get('内部编号', '')).strip()
+                    student_name = str(row.get('姓名', '')).strip()
 
-            if not student_name and internal_id in ('', 'nan', 'None'):
-                continue
+                    if not student_name and internal_id in ('', 'nan', 'None'):
+                        continue
 
-            # 优先使用内部编号匹配
-            custom_id = None
-            if internal_id and internal_id in id_map:
-                custom_id = id_map[internal_id]
-            # 编号匹配失败，尝试姓名匹配
-            elif student_name in name_map:
-                if student_name in duplicate_names:
-                    conn.rollback()
-                    return jsonify(
-                        {'success': False, 'message': f'导入中断：检测到重名学生【{student_name}】，必须填写内部编号！'})
-                custom_id = name_map[student_name]
+                    # 优先使用内部编号匹配
+                    custom_id = None
+                    if internal_id and internal_id in id_map:
+                        custom_id = id_map[internal_id]
+                    # 编号匹配失败，尝试姓名匹配
+                    elif student_name in name_map:
+                        if student_name in duplicate_names:
+                            # 抛出异常触发 with conn 的自动 rollback
+                            raise ValueError(f'导入中断：检测到重名学生【{student_name}】，必须填写内部编号！')
+                        custom_id = name_map[student_name]
 
-            if not custom_id:
-                conn.rollback()
-                return jsonify(
-                    {'success': False, 'message': f'第{index + 2}行匹配失败：该生不在【{semester}】教学班名单中。'})
+                    if not custom_id:
+                        raise ValueError(f'第{index + 2}行匹配失败：该生不在【{semester}】教学班名单中。')
 
-            # 分数清洗
-            scores = []
-            for subj in subject_columns:
-                val = row.get(subj, None)
-                if pd.isna(val) or str(val).strip() == '':
-                    scores.append(None)
-                else:
-                    try:
-                        scores.append(float(val))
-                    except:
-                        scores.append(None)
+                    # 分数清洗
+                    scores = []
+                    for subj in subject_columns:
+                        val = row.get(subj, None)
+                        if pd.isna(val) or str(val).strip() == '':
+                            scores.append(None)
+                        else:
+                            try:
+                                scores.append(float(val))
+                            except:
+                                scores.append(None)
 
-            raw_scores_data.append([exam_id, custom_id] + scores)
+                    raw_scores_data.append([exam_id, custom_id] + scores)
 
-        # 批量插入（保持高效）
-        cursor.executemany('''
-            INSERT INTO students_raw_scores 
-            (exam_id, custom_id, chinese, math, english, physics, chemistry, biology, politics, history, geography)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', raw_scores_data)
+                # 批量插入（保持高效）
+                cursor.executemany('''
+                    INSERT INTO students_raw_scores 
+                    (exam_id, custom_id, chinese, math, english, physics, chemistry, biology, politics, history, geography)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', raw_scores_data)
 
-        # 6. 克隆师资快照
-        cursor.execute('''
-            INSERT INTO dynamic_class_mapping 
-            (exam_id, campus, class_type, class_name, subject, teacher_name, teacher_uid)
-            SELECT ?, campus, class_type, class_name, subject, teacher_name, teacher_uid
-            FROM stable_class_mapping
-            WHERE semester = ?
-        ''', (exam_id, semester))
-
-        # 7. 克隆学生走班快照
-        cursor.execute('''
-                    INSERT INTO dynamic_student_course_mapping 
-                    (exam_id, custom_id, name, subject_track, 
-                     chinese_class, math_class, english_class, 
-                     physics_class, chemistry_class, biology_class, 
-                     politics_class, history_class, geography_class)
-                    SELECT ?, custom_id, name, subject_track, 
-                           chinese_class, math_class, english_class, 
-                           physics_class, chemistry_class, biology_class, 
-                           politics_class, history_class, geography_class
-                    FROM stable_student_course_mapping
+                # 6. 克隆师资快照
+                cursor.execute('''
+                    INSERT INTO dynamic_class_mapping 
+                    (exam_id, campus, class_type, class_name, subject, teacher_name, teacher_uid)
+                    SELECT ?, campus, class_type, class_name, subject, teacher_name, teacher_uid
+                    FROM stable_class_mapping
                     WHERE semester = ?
                 ''', (exam_id, semester))
 
-        conn.commit()
-        conn.close()
+                # 7. 克隆学生走班快照
+                cursor.execute('''
+                            INSERT INTO dynamic_student_course_mapping 
+                            (exam_id, custom_id, name, subject_track, 
+                             chinese_class, math_class, english_class, 
+                             physics_class, chemistry_class, biology_class, 
+                             politics_class, history_class, geography_class)
+                            SELECT ?, custom_id, name, subject_track, 
+                                   chinese_class, math_class, english_class, 
+                                   physics_class, chemistry_class, biology_class, 
+                                   politics_class, history_class, geography_class
+                            FROM stable_student_course_mapping
+                            WHERE semester = ?
+                        ''', (exam_id, semester))
 
         return jsonify({'success': True, 'message': '导入成功', 'exam_id': exam_id})
 
+    except ValueError as ve:
+        # 捕获业务逻辑主动抛出的验证异常并返回给前端
+        return jsonify({'success': False, 'message': str(ve)})
     except Exception as e:
-        if 'conn' in locals(): conn.rollback()
         return jsonify({'success': False, 'message': f'服务器错误: {str(e)}'})
 
 # ================= API 接口：师资配置与碰对 =================
@@ -264,39 +262,34 @@ def get_teacher_mapping():
     grade = request.args.get('grade')
     try:
         # 1. 提取所有系统用户
-        users_conn = sqlite3.connect(USERS_DB_FILE)
-        users_dict = {row[0]: row[1] for row in users_conn.execute("SELECT real_name, uid FROM users").fetchall()}
-        users_conn.close()
+        with closing(sqlite3.connect(USERS_DB_FILE)) as users_conn:
+            users_dict = {row[0]: row[1] for row in users_conn.execute("SELECT real_name, uid FROM users").fetchall()}
 
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION;")
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM dynamic_class_mapping WHERE exam_id = ?", (exam_id,))
+                rows = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM dynamic_class_mapping WHERE exam_id = ?", (exam_id,))
-        rows = [dict(r) for r in cursor.fetchall()]
+                update_data = []
+                for r in rows:
+                    teacher_name = r['teacher_name']
+                    is_matched = teacher_name in users_dict
+                    real_uid = users_dict.get(teacher_name, 0)
 
-        update_data = []
-        for r in rows:
-            teacher_name = r['teacher_name']
-            is_matched = teacher_name in users_dict
-            real_uid = users_dict.get(teacher_name, 0)
+                    r['matched'] = is_matched
+                    r['teacher_uid'] = real_uid
 
-            r['matched'] = is_matched
-            r['teacher_uid'] = real_uid
+                    # 核心修复：如果找到了真实的账号 UID，准备写入数据库更新它
+                    if is_matched:
+                        update_data.append((real_uid, r['id']))
 
-            # 核心修复：如果找到了真实的账号 UID，准备写入数据库更新它
-            if is_matched:
-                update_data.append((real_uid, r['id']))
+                # 批量执行数据库的 UID 修复
+                if update_data:
+                    cursor.executemany("UPDATE dynamic_class_mapping SET teacher_uid = ? WHERE id = ?", update_data)
 
-        # 批量执行数据库的 UID 修复
-        if update_data:
-            cursor.executemany("UPDATE dynamic_class_mapping SET teacher_uid = ? WHERE id = ?", update_data)
-
-        conn.commit()
-        conn.close()
         return jsonify({'success': True, 'data': rows})
     except Exception as e:
-        if 'conn' in locals(): conn.rollback()
         return jsonify({'success': False, 'message': str(e)})
 
 
@@ -307,11 +300,10 @@ def get_stable_mapping():
     grade = request.args.get('grade')
     semester = request.args.get('semester')
     try:
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM stable_class_mapping WHERE semester = ?", (semester,))
-        data = [dict(r) for r in cursor.fetchall()]
-        conn.close()
+        with closing(get_scores_db_connection(grade)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM stable_class_mapping WHERE semester = ?", (semester,))
+            data = [dict(r) for r in cursor.fetchall()]
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -326,23 +318,21 @@ def upload_stable_mapping():
     file = request.files.get('file')
     try:
         df = pd.read_excel(file, sheet_name=1)
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION;")
-        cursor.execute("DELETE FROM stable_class_mapping WHERE semester = ?", (semester,))
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM stable_class_mapping WHERE semester = ?", (semester,))
 
-        insert_data = []
-        for _, row in df.iterrows():
-            if pd.isna(row.get('教师姓名')): continue
-            insert_data.append((row.get('校区'), row.get('班级类型'), row.get('班级名称'), row.get('学科'),
-                                row.get('教师姓名'), 0, semester))
+                insert_data = []
+                for _, row in df.iterrows():
+                    if pd.isna(row.get('教师姓名')): continue
+                    insert_data.append((row.get('校区'), row.get('班级类型'), row.get('班级名称'), row.get('学科'),
+                                        row.get('教师姓名'), 0, semester))
 
-        cursor.executemany('''
-            INSERT INTO stable_class_mapping (campus, class_type, class_name, subject, teacher_name, teacher_uid, semester)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', insert_data)
-        conn.commit()
-        conn.close()
+                cursor.executemany('''
+                    INSERT INTO stable_class_mapping (campus, class_type, class_name, subject, teacher_name, teacher_uid, semester)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', insert_data)
         return jsonify({'success': True, 'message': '排课表覆盖成功'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -357,11 +347,10 @@ def get_student_course_mapping():
     grade = request.args.get('grade')
     semester = request.args.get('semester')
     try:
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM stable_student_course_mapping WHERE semester=?", (semester,))
-        rows = [dict(row) for row in cursor.fetchall()]
-        conn.close()
+        with closing(get_scores_db_connection(grade)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM stable_student_course_mapping WHERE semester=?", (semester,))
+            rows = [dict(row) for row in cursor.fetchall()]
         return jsonify({"status": "success", "data": rows})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
@@ -376,25 +365,23 @@ def upload_student_course_mapping():
     file = request.files.get('file')
     try:
         df = pd.read_excel(file, sheet_name=1).fillna('')
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION;")
-        cursor.execute("DELETE FROM stable_student_course_mapping WHERE semester=?", (semester,))
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM stable_student_course_mapping WHERE semester=?", (semester,))
 
-        insert_data = []
-        for _, row in df.iterrows():
-            cid = str(row.get('内部编号')).strip()
-            if not cid: continue
-            insert_data.append((cid, row.get('学生姓名'), row.get('选科'), row.get('语文教学班'), row.get('数学教学班'),
-                                row.get('英语教学班'), row.get('物理教学班'), row.get('化学教学班'),
-                                row.get('生物教学班'),
-                                row.get('政治教学班'), row.get('历史教学班'), row.get('地理教学班'), semester))
+                insert_data = []
+                for _, row in df.iterrows():
+                    cid = str(row.get('内部编号')).strip()
+                    if not cid: continue
+                    insert_data.append((cid, row.get('学生姓名'), row.get('选科'), row.get('语文教学班'), row.get('数学教学班'),
+                                        row.get('英语教学班'), row.get('物理教学班'), row.get('化学教学班'),
+                                        row.get('生物教学班'),
+                                        row.get('政治教学班'), row.get('历史教学班'), row.get('地理教学班'), semester))
 
-        cursor.executemany('''
-            INSERT INTO stable_student_course_mapping VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', insert_data)
-        conn.commit()
-        conn.close()
+                cursor.executemany('''
+                    INSERT INTO stable_student_course_mapping VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ''', insert_data)
         return jsonify({"status": "success", "update_count": len(insert_data)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
@@ -419,18 +406,16 @@ def update_single_student_mapping():
         return jsonify({"status": "error", "message": "非法的修改字段"})
 
     try:
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
+                # 2. 执行精准更新
+                cursor.execute(f'''
+                    UPDATE stable_student_course_mapping
+                    SET {field} = ?
+                    WHERE custom_id = ? AND semester = ?
+                ''', (value, custom_id, semester))
 
-        # 2. 执行精准更新
-        cursor.execute(f'''
-            UPDATE stable_student_course_mapping
-            SET {field} = ?
-            WHERE custom_id = ? AND semester = ?
-        ''', (value, custom_id, semester))
-
-        conn.commit()
-        conn.close()
         return jsonify({"status": "success", "message": "更新成功"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
@@ -449,14 +434,12 @@ def get_dynamic_student_mapping():
         return jsonify({"status": "error", "message": "缺少关键参数 exam_id 或 grade"})
 
     try:
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
+        with closing(get_scores_db_connection(grade)) as conn:
+            cursor = conn.cursor()
+            # 精准查询本次考试克隆下来的所有学生状态
+            cursor.execute("SELECT * FROM dynamic_student_course_mapping WHERE exam_id = ?", (exam_id,))
+            rows = [dict(row) for row in cursor.fetchall()]
 
-        # 精准查询本次考试克隆下来的所有学生状态
-        cursor.execute("SELECT * FROM dynamic_student_course_mapping WHERE exam_id = ?", (exam_id,))
-        rows = [dict(row) for row in cursor.fetchall()]
-
-        conn.close()
         return jsonify({"status": "success", "data": rows})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
@@ -486,18 +469,16 @@ def update_single_dynamic_student_mapping():
         return jsonify({"status": "error", "message": "非法的修改字段"})
 
     try:
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
+                # 2. 执行精准更新：务必使用联合主键 (exam_id AND custom_id) 锁定唯一记录
+                cursor.execute(f'''
+                    UPDATE dynamic_student_course_mapping
+                    SET {field} = ?
+                    WHERE exam_id = ? AND custom_id = ?
+                ''', (value, exam_id, custom_id))
 
-        # 2. 执行精准更新：务必使用联合主键 (exam_id AND custom_id) 锁定唯一记录
-        cursor.execute(f'''
-            UPDATE dynamic_student_course_mapping
-            SET {field} = ?
-            WHERE exam_id = ? AND custom_id = ?
-        ''', (value, exam_id, custom_id))
-
-        conn.commit()
-        conn.close()
         return jsonify({"status": "success", "message": "快照更新成功"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
@@ -516,25 +497,22 @@ def update_single_teacher_mapping():
 
     try:
         # 1. 去用户库查询新名字是否对应了真实的 UID
-        users_conn = sqlite3.connect(USERS_DB_FILE)
-        cursor_u = users_conn.cursor()
-        cursor_u.execute("SELECT uid FROM users WHERE real_name = ?", (new_teacher_name,))
-        user = cursor_u.fetchone()
-        users_conn.close()
+        with closing(sqlite3.connect(USERS_DB_FILE)) as users_conn:
+            cursor_u = users_conn.cursor()
+            cursor_u.execute("SELECT uid FROM users WHERE real_name = ?", (new_teacher_name,))
+            user = cursor_u.fetchone()
 
         new_uid = user[0] if user else 0
 
         # 2. 更新师资快照表
-        conn = get_scores_db_connection(grade)
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE dynamic_class_mapping
-            SET teacher_name = ?, teacher_uid = ?
-            WHERE id = ?
-        ''', (new_teacher_name, new_uid, mapping_id))
-
-        conn.commit()
-        conn.close()
+        with closing(get_scores_db_connection(grade)) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE dynamic_class_mapping
+                    SET teacher_name = ?, teacher_uid = ?
+                    WHERE id = ?
+                ''', (new_teacher_name, new_uid, mapping_id))
 
         return jsonify({
             "status": "success",
