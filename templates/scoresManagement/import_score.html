@@ -13,13 +13,13 @@
     .back-btn:hover { color: #0077ed; opacity: 0.8; }
     h1 { font-size: 28px; font-weight: 600; margin: 0; color: var(--text-main); }
 
-    /* 进度条 (Wizard Steps) */
+    /* 进度条 (Wizard Steps) - 已升级为4步 */
     .wizard-steps { display: flex; justify-content: center; align-items: center; margin-bottom: 30px; padding: 15px 0; }
     .step { display: flex; align-items: center; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
     .step.active { color: var(--apple-blue); }
-    .step-circle { width: 28px; height: 28px; border-radius: 50%; background-color: #e5e5ea; color: white; display: flex; justify-content: center; align-items: center; margin-right: 8px; font-weight: 600; }
+    .step-circle { width: 26px; height: 26px; border-radius: 50%; background-color: #e5e5ea; color: white; display: flex; justify-content: center; align-items: center; margin-right: 8px; font-weight: 600; font-size: 13px; }
     .step.active .step-circle { background-color: var(--apple-blue); box-shadow: 0 4px 10px rgba(0, 113, 227, 0.3); }
-    .step-line { width: 60px; height: 2px; background-color: #e5e5ea; margin: 0 15px; }
+    .step-line { width: 40px; height: 2px; background-color: #e5e5ea; margin: 0 12px; }
 
     /* 表单卡片 */
     .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 30px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 25px; }
@@ -34,7 +34,7 @@
     .form-group.full-width { grid-column: span 2; }
     label { font-size: 14px; font-weight: 500; color: var(--text-main); }
     .required { color: var(--apple-red); }
-    
+
     /* 输入框样式 */
     input[type="text"], input[type="date"], select { padding: 12px 14px; border-radius: 10px; border: 1px solid #d2d2d7; font-size: 15px; outline: none; transition: 0.2s; background-color: #fafafa; font-family: inherit; width: 100%; box-sizing: border-box; }
     input[type="text"]:focus, input[type="date"]:focus, select:focus { border-color: var(--apple-blue); background-color: white; box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1); }
@@ -52,7 +52,7 @@
     .upload-icon { font-size: 48px; margin-bottom: 15px; display: block; }
     .upload-text { font-size: 16px; font-weight: 500; color: var(--text-main); margin-bottom: 5px; }
     .upload-subtext { font-size: 13px; color: var(--text-secondary); }
-    
+
     #file_name_display { margin-top: 15px; font-size: 15px; font-weight: 600; color: #34c759; display: none; align-items: center; justify-content: center; gap: 6px; }
 
     /* 底部操作区 */
@@ -78,24 +78,29 @@
     <div class="wizard-steps">
         <div class="step active">
             <div class="step-circle">1</div>
-            <span>基础信息与成绩落盘</span>
+            <span>导入原始分</span>
         </div>
         <div class="step-line"></div>
         <div class="step">
             <div class="step-circle">2</div>
-            <span>师资分布配置快照</span>
+            <span>核对师资快照</span>
         </div>
         <div class="step-line"></div>
         <div class="step">
             <div class="step-circle">3</div>
-            <span>数据分析引擎</span>
+            <span>核对学生快照</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+            <div class="step-circle">4</div>
+            <span>执行进阶分析</span>
         </div>
     </div>
 
     <form id="importForm">
         <div class="card">
-            <div class="card-title"><span>📝</span> 第一步：填写考务基础信息</div>
-            
+            <div class="card-title"><span>📝</span> 基础考务信息配置</div>
+
             <div class="form-grid">
                 <div class="form-group full-width">
                     <label>考试名称 <span class="required">*</span></label>
@@ -138,7 +143,7 @@
 
         <div class="card">
             <div class="card-title">
-                <span>📥</span> 第二步：上传《原始成绩表》
+                <span>📥</span> 上传《原始成绩表》
                 <div class="card-title-right">
                     <a href="{{ url_for('static', filename='files/成绩导入模板.xlsx') }}" download class="btn-secondary">
                         📄 下载成绩导入模板
@@ -162,23 +167,20 @@
                 <div class="upload-text">将 Excel 文件拖拽至此处，或 <span style="color: var(--apple-blue);">点击浏览</span></div>
                 <div class="upload-subtext">仅支持 .xlsx 格式</div>
             </div>
-            
+
             <div id="file_name_display">
                 <span>✅ 已选择文件：</span><span id="selected_filename"></span>
             </div>
-            
+
             <div class="actions">
                 <button type="button" class="btn-cancel" onclick="window.history.back();">取消</button>
                 <button type="submit" id="submit_btn" class="btn-submit">
-                    <span id="btn_text">🚀 开始导入数据并生成快照</span>
+                    <span id="btn_text">🚀 导入数据并生成全体快照</span>
                 </button>
             </div>
         </div>
     </form>
 </div>
-{% endblock %}
-
-{% block scripts %}
 <script>
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file_input');
@@ -194,7 +196,7 @@
             const file = this.files[0];
             if (!file.name.endsWith('.xlsx')) {
                 alert("⚠️ 请上传合法的 Excel (.xlsx) 文件！");
-                this.value = ''; 
+                this.value = '';
                 fileNameDisplay.style.display = 'none';
                 dropzone.classList.remove('success');
                 return;
@@ -216,7 +218,7 @@
     // 提交逻辑
     importForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        
+
         const file = fileInput.files[0];
         if (!file) {
             alert("⚠️ 请先上传包含成绩数据的 Excel 文件！");
@@ -225,7 +227,7 @@
 
         // 锁定按钮，防止重复提交
         submitBtn.disabled = true;
-        btnText.innerHTML = '⏳ 正在解析入库，请勿关闭页面...';
+        btnText.innerHTML = '⏳ 正在解析入库并克隆双快照，请稍候...';
 
         const formData = new FormData();
         formData.append('exam_name', document.getElementById('exam_name').value);
@@ -235,7 +237,7 @@
         formData.append('exam_type', document.getElementById('exam_type').value);
         formData.append('score_file', file);
 
-        // 发送给后端的 app.py
+        // 发送给后端的 API
         fetch('/scoresManagement/api/upload_scores', {
             method: 'POST',
             body: formData
@@ -247,7 +249,7 @@
         .then(data => {
             if (data.success) {
                 alert("✅ " + data.message);
-                // 跳转到第2步 (师资配置)
+                // 跳转到第2步 (师资配置快照)，依然携带必要的溯源参数
                 window.location.href = `/scoresManagement/teacher_mapping_config?exam_id=${data.exam_id}&grade=${document.getElementById('grade').value}`;
             } else {
                 alert("❌ 导入中断：\n" + data.message);
@@ -262,7 +264,7 @@
 
     function resetButton() {
         submitBtn.disabled = false;
-        btnText.innerHTML = '🚀 开始导入数据并生成快照';
+        btnText.innerHTML = '🚀 导入数据并生成全体快照';
     }
 </script>
 {% endblock %}

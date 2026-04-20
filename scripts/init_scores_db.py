@@ -59,23 +59,6 @@ def init_scores_db(grade_year):
         )
     ''')
 
-    # ================= 4. 学生走班关系底表 =================
-    # 作用：记录学生在特定学期的行政班和各科教学班归属
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS student_class_assignments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            semester VARCHAR(20) NOT NULL,
-            custom_id CHAR(20) NOT NULL,
-            student_name VARCHAR(50),
-            admin_class VARCHAR(50),
-            physics_class VARCHAR(50),
-            chemistry_class VARCHAR(50),
-            biology_class VARCHAR(50),
-            politics_class VARCHAR(50),
-            history_class VARCHAR(50),
-            geography_class VARCHAR(50)
-        )
-    ''')
 
     # ================= 5. 原始分底表 =================
     cursor.execute('''
@@ -140,7 +123,29 @@ def init_scores_db(grade_year):
     # ================= 7. 学生教学班九科全景矩阵大宽表 =================
     # 作用：用于绑定每个学生的定制编号与具体的九科教学班信息 (联合主键: custom_id, semester)
     cursor.execute('''
-            CREATE TABLE IF NOT EXISTS stable_student_course_mapping (
+                CREATE TABLE IF NOT EXISTS stable_student_course_mapping (
+                    custom_id CHAR(20) NOT NULL,
+                    name VARCHAR(20),
+                    subject_track VARCHAR(10),
+                    chinese_class VARCHAR(15),
+                    math_class VARCHAR(15),
+                    english_class VARCHAR(15),
+                    physics_class VARCHAR(15),
+                    chemistry_class VARCHAR(15),
+                    biology_class VARCHAR(15),
+                    politics_class VARCHAR(15),
+                    history_class VARCHAR(15),
+                    geography_class VARCHAR(15),
+                    semester VARCHAR(20) NOT NULL,
+                    PRIMARY KEY (custom_id, semester)
+                )
+            ''')
+
+    # ================= 8. 学生教学班九科快照表 (Dynamic Mapping) =================
+    # 作用：将学生在特定考试 (exam_id) 发生时的走班状态永久定格，防止后续底表修改影响历史成绩分析
+    cursor.execute('''
+            CREATE TABLE IF NOT EXISTS dynamic_student_course_mapping (
+                exam_id VARCHAR(50) NOT NULL,
                 custom_id CHAR(20) NOT NULL,
                 name VARCHAR(20),
                 subject_track TEXT,
@@ -153,11 +158,10 @@ def init_scores_db(grade_year):
                 politics_class TEXT,
                 history_class TEXT,
                 geography_class TEXT,
-                semester TEXT,
-                PRIMARY KEY (custom_id)
+                PRIMARY KEY (exam_id, custom_id),
+                FOREIGN KEY (exam_id) REFERENCES exam_metadata(exam_id)
             )
         ''')
-
 
     conn.commit()
     conn.close()

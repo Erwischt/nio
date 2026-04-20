@@ -48,7 +48,7 @@
     .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
 
     .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px); z-index: 100; justify-content: center; align-items: center; }
-    .modal { background: white; padding: 30px; border-radius: var(--border-radius); width: 650px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+    .modal { margin-top: 50px; background: white; padding: 30px; border-radius: var(--border-radius); width: 650px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
     .form-group { display: flex; flex-direction: column; }
     .form-group label { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
@@ -83,7 +83,7 @@
                 <option value="">全部校区</option><option value="校本部">校本部</option><option value="礼贤校区">礼贤校区</option>
             </select>
             <input type="text" id="s_year" placeholder="入学年份 (如2024)" style="width:140px;" onkeypress="handleEnter(event)">
-            <input type="text" id="s_class" placeholder="班级 (如01)" style="width:100px;" onkeypress="handleEnter(event)">
+            <input type="text" id="s_class" placeholder="班级 (如1或12)" style="width:140px;" onkeypress="handleEnter(event)">
             <button onclick="loadStudents(1)">查询</button>
             <button class="secondary" onclick="resetSimpleFilters()">重置</button>
             <button onclick="downloadQueryResults()" class="btn-secondary" style="background-color: #f1f5f9; color: var(--apple-blue); border: 1px solid #cce0ff; font-weight: 600;">📥 下载查询结果</button>
@@ -102,10 +102,13 @@
     <div class="card">
         <table>
             <thead>
-                <tr><th>内部编号</th><th>姓名</th><th>性别</th><th>班级</th><th>校区</th><th style="width: 160px;">操作</th></tr>
+                <tr>
+                    <th>内部编号</th><th>姓名</th><th>性别</th><th>校区</th><th>班级</th><th>特殊备注</th>
+                    <th style="width: 160px;">操作</th>
+                </tr>
             </thead>
             <tbody id="studentTableBody">
-                <tr><td colspan="6" style="text-align:center; color: #86868b; padding: 40px;">请在上方输入条件并点击“查询”加载数据</td></tr>
+                <tr><td colspan="7" style="text-align:center; color: #86868b; padding: 40px;">请在上方输入条件并点击“查询”加载数据</td></tr>
             </tbody>
         </table>
         
@@ -233,30 +236,54 @@
         let fieldOptions = '';
         for(let key in advFields) fieldOptions += `<option value="${key}">${advFields[key].label}</option>`;
         const fieldHTML = `<select class="field-select" onchange="handleFieldChange(this)">${fieldOptions}</select>`;
-        const opHTML = `<select class="op-select"><option value="=">等于 (=)</option><option value="LIKE">包含</option><option value="!=">不等于 (≠)</option></select>`;
+
+        // 【修改点】增加了为 空(IS_EMPTY) 和 不为空(IS_NOT_EMPTY) 选项，并绑定了 onchange 事件
+        const opHTML = `<select class="op-select" onchange="handleOpChange(this)">
+            <option value="=">等于 (=)</option>
+            <option value="LIKE">包含</option>
+            <option value="!=">不等于 (≠)</option>
+            <option value="IS_EMPTY">为空</option>
+            <option value="IS_NOT_EMPTY">不为空</option>
+        </select>`;
+
         const valHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
         const delBtn = `<button class="action-btn btn-danger" onclick="this.parentElement.remove()">- 移除</button>`;
         div.innerHTML = `${logicHTML} ${fieldHTML} ${opHTML} <div class="val-container" style="flex-grow:1; max-width:300px;">${valHTML}</div> ${delBtn}`;
         container.appendChild(div);
-        handleFieldChange(div.querySelector('.field-select')); 
+        handleFieldChange(div.querySelector('.field-select'));
+    }
+
+    // 【新增函数】处理操作符变化。如果选了“为空/不为空”，则隐藏输入框
+    function handleOpChange(selectEl) {
+        const op = selectEl.value;
+        const valContainer = selectEl.parentElement.querySelector('.val-container');
+        if (op === 'IS_EMPTY' || op === 'IS_NOT_EMPTY') {
+            valContainer.style.visibility = 'hidden';
+            // 清空可能残余的值
+            const valInput = valContainer.querySelector('.val-input');
+            if (valInput) valInput.value = '';
+        } else {
+            valContainer.style.visibility = 'visible';
+        }
     }
 
     function handleFieldChange(selectEl) {
-    const config = advFields[selectEl.value];
-    const valContainer = selectEl.parentElement.querySelector('.val-container');
+        const config = advFields[selectEl.value];
+        const valContainer = selectEl.parentElement.querySelector('.val-container');
 
-    // 如果该字段配置了 type 为 select，则渲染下拉框
-    if(config.type === 'select') {
-        let opts = '<option value="">请选择...</option>';
-        config.options.forEach(o => {
-            opts += `<option value="${o}">${o}</option>`;
-        });
-        valContainer.innerHTML = `<select class="val-input">${opts}</select>`;
-    } else {
-        // 否则渲染普通的文本输入框
-        valContainer.innerHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
+        if(config.type === 'select') {
+            let opts = '<option value="">请选择...</option>';
+            config.options.forEach(o => {
+                opts += `<option value="${o}">${o}</option>`;
+            });
+            valContainer.innerHTML = `<select class="val-input">${opts}</select>`;
+        } else {
+            valContainer.innerHTML = `<input type="text" class="val-input" placeholder="请输入...">`;
+        }
+
+        // 【修改点】切换字段导致右侧输入框重置后，根据当前的操作符状态恢复显示/隐藏
+        handleOpChange(selectEl.parentElement.querySelector('.op-select'));
     }
-}
 
     function changePage(p) { if(p >= 1 && p <= totalPages) loadStudents(p); }
 
@@ -271,8 +298,19 @@
         } else {
             payload.filters = [];
             document.querySelectorAll('.adv-row').forEach(row => {
-                const val = row.querySelector('.val-input').value;
-                if(val) payload.filters.push({ logic: row.querySelector('.logic-select').value, field: row.querySelector('.field-select').value, operator: row.querySelector('.op-select').value, value: val });
+                const op = row.querySelector('.op-select').value;
+                const valInput = row.querySelector('.val-input');
+                const val = valInput ? valInput.value : '';
+
+                // 【修改点】条件放宽：如果是 IS_EMPTY 或 IS_NOT_EMPTY，即使 val 为空也认定为有效条件
+                if(val || op === 'IS_EMPTY' || op === 'IS_NOT_EMPTY') {
+                    payload.filters.push({
+                        logic: row.querySelector('.logic-select').value,
+                        field: row.querySelector('.field-select').value,
+                        operator: op,
+                        value: val
+                    });
+                }
             });
         }
 
@@ -296,11 +334,21 @@
     function renderTable(data) {
         const tbody = document.getElementById('studentTableBody');
         tbody.innerHTML = '';
-        if (data.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: #86868b; padding: 40px;">未找到符合条件的学生数据</td></tr>'; return; }
+        // 注意：空数据提示的 colspan 也需要同步修改为 7
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: #86868b; padding: 40px;">未找到符合条件的学生数据</td></tr>';
+            return;
+        }
         data.forEach(s => {
             const classDisplay = s.enter_year ? `${s.enter_year.slice(-2)}级${s.current_class}班` : `${s.current_class}班`;
+            // 按照新顺序拼接 <td> 标签，并新增了特殊备注
             tbody.innerHTML += `<tr>
-                <td>${s.custom_id || ''}</td><td><strong>${s.name}</strong></td><td>${s.sex || ''}</td><td>${classDisplay}</td><td>${s.campus}</td>
+                <td>${s.custom_id || ''}</td>
+                <td><strong>${s.name}</strong></td>
+                <td>${s.sex || ''}</td>
+                <td>${s.campus || ''}</td>
+                <td>${classDisplay}</td>
+                <td>${s.remarks || ''}</td>
                 <td>
                     <button class="action-btn btn-success" onclick="openStudentModal(${s.id}, 'view')">详情</button>
                     <button class="action-btn" onclick="openStudentModal(${s.id}, 'edit')">编辑</button>
@@ -467,17 +515,16 @@
     }
 
     function downloadQueryResults() {
-        // 1. 智能判断：获取动态高级筛选的容器
-        const advContainer = document.getElementById('advRowsContainer');
-        // 如果容器存在，且包含子节点，且父面板没有被隐藏，则认为当前是高级模式
-        const isAdvancedMode = advContainer && advContainer.children.length > 0 && advContainer.closest('.card').style.display !== 'none';
+        const isAdvancedMode = (currentMode === 'advanced')
 
         let params = new URLSearchParams();
 
         if (isAdvancedMode) {
             // ================= 模式 A：动态高级筛选导出 =================
+            const advContainer = document.getElementById('advRowsContainer');
             let conditions = [];
             const rows = advContainer.querySelectorAll('.adv-row');
+
 
             rows.forEach((row, index) => {
                 const logic = row.querySelector('.logic-select').value;
@@ -488,7 +535,8 @@
                 const valElement = row.querySelector('.val-container input, .val-container select');
                 const val = valElement ? valElement.value.trim() : '';
 
-                if (val !== '') { // 只打包填写了有效值的条件
+                // 【修改点】只要填了有效值，或者操作符是“为空/不为空”，都判定为有效查询条件打包给后端
+                if (val !== '' || op === 'IS_EMPTY' || op === 'IS_NOT_EMPTY') {
                     conditions.push({
                         logic: index === 0 ? '' : logic, // 第一行的逻辑词被隐藏，不传入
                         field: field,

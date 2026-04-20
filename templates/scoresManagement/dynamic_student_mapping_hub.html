@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}核对学生走班快照 - 校园数据平台{% endblock %}
+
+{% block head %}
+<style>
+    /* ========== Apple 风格专属页面样式 ========== */
+    .container { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+    
+    .page-header { display: flex; align-items: center; margin-bottom: 25px; }
+    h1 { font-size: 28px; font-weight: 600; margin: 0; color: var(--text-main); }
+
+    /* 进度条 (Wizard Steps) - 第 3 步激活状态 */
+    .wizard-steps { display: flex; justify-content: center; align-items: center; margin-bottom: 30px; padding: 15px 0; }
+    .step { display: flex; align-items: center; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+    .step.completed { color: #34c759; }
+    .step.active { color: var(--apple-blue); }
+    .step-circle { width: 26px; height: 26px; border-radius: 50%; background-color: #e5e5ea; color: white; display: flex; justify-content: center; align-items: center; margin-right: 8px; font-weight: 600; font-size: 13px; }
+    .step.completed .step-circle { background-color: #34c759; }
+    .step.active .step-circle { background-color: var(--apple-blue); box-shadow: 0 4px 10px rgba(0, 113, 227, 0.3); }
+    .step-line { width: 40px; height: 2px; background-color: #e5e5ea; margin: 0 12px; }
+    .step.completed + .step-line { background-color: #34c759; opacity: 0.5; }
+
+    /* 卡片与提示框 */
+    .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 24px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 20px; border: 1px solid #e5e5ea; }
+    .info-box { background-color: #f0f7ff; border: 1px solid #cce0ff; border-radius: 10px; padding: 15px 20px; margin-bottom: 20px; font-size: 14px; line-height: 1.6; color: #1d4ed8; }
+
+    /* 全景矩阵表格 (核心样式) */
+    .matrix-container { overflow-x: auto; overflow-y: auto; max-height: 60vh; border-radius: 8px; border: 1px solid #e5e5ea; display: none; }
+    .matrix-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1500px; font-size: 13px; }
+    .matrix-table th, .matrix-table td { padding: 10px 12px; text-align: center; border-bottom: 1px solid #e5e5ea; border-right: 1px solid #e5e5ea; white-space: nowrap; }
+    .matrix-table th { background-color: #f5f5f7; font-weight: 600; color: var(--text-secondary); position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #d2d2d7; }
+    
+    /* 冻结前三列：内部编号、姓名、选科 */
+    .matrix-table th:nth-child(1), .matrix-table td:nth-child(1) { position: sticky; left: 0; background-color: #f9f9fb; z-index: 11; width: 120px; font-weight: 600; color: #86868b; }
+    .matrix-table th:nth-child(2), .matrix-table td:nth-child(2) { position: sticky; left: 120px; background-color: #f9f9fb; z-index: 11; width: 90px; font-weight: 600; color: var(--text-main); }
+    .matrix-table th:nth-child(3), .matrix-table td:nth-child(3) { position: sticky; left: 210px; background-color: #f9f9fb; z-index: 11; width: 90px; border-right: 2px solid #d2d2d7; color: #86868b; }
+    .matrix-table th:nth-child(1), .matrix-table th:nth-child(2), .matrix-table th:nth-child(3) { z-index: 12; background-color: #e8e8ed; }
+
+    /* 行内编辑单元格样式 */
+    .editable-cell { cursor: pointer; transition: background-color 0.2s; }
+    .editable-cell:hover { background-color: #eef5ff; }
+    .editable-cell.editing { padding: 0; }
+    .inline-input { width: 100%; height: 100%; padding: 10px; border: 2px solid var(--apple-blue); outline: none; font-size: 13px; text-align: center; box-sizing: border-box; background: #fff; }
+
+    .loading-text { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 15px; }
+
+    /* 底部操作区 */
+    .actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e5ea; }
+    .btn-submit { padding: 10px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; background: var(--apple-blue); color: white; transition: 0.2s; display: flex; align-items: center; gap: 8px; }
+    .btn-submit:hover { background: #0077ed; transform: translateY(-1px); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>核对学生走班快照</h1>
+    </div>
+
+    <div class="wizard-steps">
+        <div class="step completed">
+            <div class="step-circle">✓</div>
+            <span>导入原始分</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step completed">
+            <div class="step-circle">✓</div>
+            <span>核对师资快照</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step active">
+            <div class="step-circle">3</div>
+            <span>核对学生快照</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+            <div class="step-circle">4</div>
+            <span>执行进阶分析</span>
+        </div>
+    </div>
+
+    <div class="info-box">
+        💡 <strong>系统已自动从“走班底表”为您克隆了本次考试的学生选课与教学班状态。</strong><br>
+        如果您发现有学生在本次考试前临时调班，请直接在下方点击单元格修改。此处的修改<strong>仅对本次考试生效，绝对不会污染全校排课底表数据</strong>。
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div id="loadingView" class="loading-text">
+            ⏳ 正在拉取本次考试的走班快照数据...
+        </div>
+
+        <div id="matrixView" class="matrix-container">
+            <table class="matrix-table" id="matrixTable">
+                <thead>
+                    <tr>
+                        <th>🔒 内部编号</th>
+                        <th>🔒 姓名</th>
+                        <th>🔒 选科</th>
+                        <th>语文</th>
+                        <th>数学</th>
+                        <th>英语</th>
+                        <th>物理</th>
+                        <th>化学</th>
+                        <th>生物</th>
+                        <th>政治</th>
+                        <th>历史</th>
+                        <th>地理</th>
+                    </tr>
+                </thead>
+                <tbody id="matrixBody"></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="actions">
+        <button onclick="finishPipeline()" class="btn-submit">
+            <span>🚀 核对无误，执行进阶分析</span>
+        </button>
+    </div>
+</div>
+<script>
+    // 注入后端传来的全局参数
+    const currentExamId = "{{ exam_id }}";
+    const currentGrade = "{{ grade }}";
+
+    // 对应九科的大宽表后端字段
+    const subjectFields = [
+        'chinese_class', 'math_class', 'english_class', 
+        'physics_class', 'chemistry_class', 'biology_class', 
+        'politics_class', 'history_class', 'geography_class'
+    ];
+
+    document.addEventListener('DOMContentLoaded', loadSnapshotData);
+
+    function loadSnapshotData() {
+        // 请求我们将要在后端编写的新 API
+        fetch(`/scoresManagement/api/dynamic_student_mapping?exam_id=${currentExamId}&grade=${currentGrade}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('loadingView').style.display = 'none';
+                if (data.status === 'success' && data.data.length > 0) {
+                    renderMatrix(data.data);
+                    document.getElementById('matrixView').style.display = 'block';
+                } else {
+                    document.getElementById('loadingView').innerHTML = '❌ 暂无快照数据，可能是导入成绩时底层克隆失败。';
+                    document.getElementById('loadingView').style.display = 'block';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('loadingView').innerHTML = '❌ 网络请求失败，请检查网络连接。';
+                document.getElementById('loadingView').style.display = 'block';
+            });
+    }
+
+    function renderMatrix(dataList) {
+        const tbody = document.getElementById('matrixBody');
+        tbody.innerHTML = '';
+
+        dataList.forEach(row => {
+            const tr = document.createElement('tr');
+            
+            // 🔒 冻结的三列
+            let html = `
+                <td>${row.custom_id || ''}</td>
+                <td>${row.name || ''}</td>
+                <td>${row.subject_track || ''}</td>
+            `;
+
+            // ✍️ 九科动态可编辑列
+            subjectFields.forEach(field => {
+                const val = row[field] || '';
+                html += `<td class="editable-cell" onclick="enableInlineEdit(this, '${row.custom_id}', '${field}')">${val}</td>`;
+            });
+
+            tr.innerHTML = html;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ⚡ 唤起行内闪电编辑
+    function enableInlineEdit(td, customId, field) {
+        if (td.classList.contains('editing')) return; 
+        
+        const originalValue = td.innerText.trim();
+        td.classList.add('editing');
+        
+        td.innerHTML = `<input type="text" class="inline-input" value="${originalValue}" placeholder="无">`;
+        const input = td.querySelector('input');
+        input.focus();
+
+        // 失去焦点或回车均保存
+        input.addEventListener('blur', () => saveInlineEdit(td, customId, field, input.value, originalValue));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                td.innerHTML = originalValue;
+                td.classList.remove('editing');
+            }
+        });
+    }
+
+    // 保存微调修改到后端快照表
+    function saveInlineEdit(td, customId, field, newValue, originalValue) {
+        newValue = newValue.trim();
+        if (newValue === originalValue) {
+            td.innerHTML = newValue;
+            td.classList.remove('editing');
+            return;
+        }
+
+        td.innerHTML = newValue;
+        td.classList.remove('editing');
+        td.style.color = '#ccc'; 
+
+        fetch(`/scoresManagement/api/dynamic_student_mapping/update_single`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                grade: currentGrade, 
+                exam_id: currentExamId, 
+                custom_id: customId, 
+                field: field, 
+                value: newValue 
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                td.style.color = 'var(--text-main)'; 
+            } else {
+                alert('保存失败: ' + data.message);
+                td.innerHTML = originalValue; 
+                td.style.color = 'var(--text-main)';
+            }
+        })
+        .catch(err => {
+            alert('网络异常');
+            td.innerHTML = originalValue;
+            td.style.color = 'var(--text-main)';
+        });
+    }
+
+    function finishPipeline() {
+        // 完成第三步，跳转到第四步：数据分析引擎
+        // 这里假设分析引擎的路由为 /scoresManagement/engine
+        window.location.href = `/scoresManagement/analyze_engine?exam_id=${currentExamId}&grade=${currentGrade}`;
+    }
+</script>
+{% endblock %}

@@ -92,28 +92,37 @@ def query_students():
         if current_class:
             query_parts.append("current_class = ?")
             params.append(current_class)
-
         where_clause = " WHERE " + " AND ".join(query_parts) if query_parts else ""
-
     elif mode == 'advanced':
         filters = data.get('filters', [])
         allowed_fields = {'custom_id', 'school_id', 'national_id', 'name', 'sex', 'enter_year', 'campus',
-                          'current_class', 'subject', 'language_type', 'category', 'major', 'at_school', 'boarding_status', 'remarks'}
-        allowed_ops = {'=', '!=', '>', '<', '>=', '<=', 'LIKE'}
+                          'current_class', 'subject', 'language_type', 'category', 'major', 'at_school',
+                          'boarding_status', 'remarks'}
+        # 1. 扩展白名单，加入 'IS_EMPTY' 和 'IS_NOT_EMPTY'
+        allowed_ops = {'=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IS_EMPTY', 'IS_NOT_EMPTY'}
         for i, f in enumerate(filters):
             field = f.get('field')
             op = f.get('operator')
             val = str(f.get('value', '')).strip()
             logic = f.get('logic', 'AND').upper() if i > 0 else ''
-
-            if field in allowed_fields and op in allowed_ops and val:
-                params.append(f"%{val}%" if op == 'LIKE' else val)
-                condition_str = f"{field} {op} ?"
+            # 2. 移除对 val 必须存在的统一硬性校验，将校验下放到具体操作符中
+            if field in allowed_fields and op in allowed_ops:
+                # 3. 针对“为空”和“不为空”做特殊 SQL 拼接，不需要追加参数
+                if op == 'IS_EMPTY':
+                    condition_str = f"({field} IS NULL OR {field} = '')"
+                elif op == 'IS_NOT_EMPTY':
+                    condition_str = f"({field} IS NOT NULL AND {field} != '')"
+                # 4. 对于其他常规操作符，仍然需要校验 val 是否存在
+                elif val:
+                    params.append(f"%{val}%" if op == 'LIKE' else val)
+                    condition_str = f"{field} {op} ?"
+                else:
+                    continue  # 如果是常规操作符但没有填值，则跳过此条件
+                # 组装 SQL 语句
                 if i == 0:
                     query_parts.append(f"({condition_str})")
                 else:
                     query_parts.append(f"{logic if logic in ('AND', 'OR') else 'AND'} ({condition_str})")
-
         where_clause = " WHERE " + " ".join(query_parts) if query_parts else ""
     else:
         where_clause = ""
@@ -141,7 +150,13 @@ def add_student():
     enter_year = data.get('enter_year', '')
     campus = data.get('campus', '')
     year_part = enter_year[-2:] if len(enter_year) == 4 else '00'
-    campus_part = '1' if campus == '校本部' else ('2' if campus == '礼贤校区' else '0')
+    campus_part = '0'
+    if campus == '校本部':
+        campus_part = '91'
+    elif campus == '礼贤校区':
+        campus_part = '81'
+    else:
+        campus_part = '00'
 
     try:
         conn = sqlite3.connect(MAIN_DB_FILE)
@@ -361,14 +376,22 @@ def import_students():
             else:
                 # 新增模式：自动生成内部编号
                 year_part = enter_year[-2:] if len(enter_year) >= 2 else '00'
-                campus_part = '1' if campus_name == '校本部' else ('2' if campus_name == '礼贤校区' else '0')
+
+                campus_part = '0'
+                if campus_name == '校本部':
+                    campus_part = '91'
+                elif campus_name == '礼贤校区':
+                    campus_part = '81'
+                else:
+                    campus_part = '00'
+
                 prefix = f"{year_part}{campus_part}"
 
                 prefix_counters[prefix] = prefix_counters.get(prefix, 0) + 1
                 final_custom_id = f"{prefix}{prefix_counters[prefix]:04d}"
 
                 insert_data.append((final_custom_id, db_school_id, db_national_id) + common_values)
-                log_data.append((final_custom_id, '批量导入新增', f'通过Excel导入新学生:{name}，语种:{language_type}',
+                log_data.append((final_custom_id, '批量导入新增', f'通过Excel导入新学生:{name}',
                                  current_time, current_editor))
                 insert_count += 1
 
@@ -428,14 +451,15 @@ def import_students():
 @login_required
 def export_query_students():
     """
-    【同步更新版】根据前端查询条件导出包含“外语种类”的 Excel
+    【修复版】根据前端查询条件导出 Excel
+    支持普通模式下的：关键词、校区、年级、班级过滤
     """
     is_advanced = request.args.get('is_advanced', 'false').lower() == 'true'
     query = "SELECT * FROM students WHERE 1=1"
     params = []
 
-    # 1. 解析查询条件 (保持原有逻辑)
     if is_advanced:
+        # ================= 高级模式逻辑 (添加为空/不为空支持) =================
         adv_conditions_str = request.args.get('adv_conditions', '[]')
         try:
             conditions = json.loads(adv_conditions_str)
@@ -445,33 +469,65 @@ def export_query_students():
         valid_fields = ['custom_id', 'school_id', 'national_id', 'name', 'former_name', 'sex',
                         'enter_year', 'campus', 'current_class', 'subject', 'category',
                         'major', 'at_school', 'boarding_status', 'apartment', 'dormitory',
-                        'remarks', 'language_type']  # 👈 加入新字段过滤支持
-        valid_ops = ['=', '!=', 'LIKE']
+                        'remarks', 'language_type']
+        # 1. 扩展白名单，加入 'IS_EMPTY' 和 'IS_NOT_EMPTY'
+        valid_ops = ['=', '!=', 'LIKE', 'IS_EMPTY', 'IS_NOT_EMPTY']
 
         if conditions:
-            query += " AND ("
-            for i, cond in enumerate(conditions):
-                logic = cond.get('logic', 'AND') if i > 0 else ""
+            parts = []
+            for cond in conditions:
                 field = cond.get('field')
                 op = cond.get('op')
-                val = cond.get('value')
+                val = str(cond.get('value', '')).strip()
+
+                # 2. 移除对 val 的统一硬性限制
                 if field in valid_fields and op in valid_ops:
-                    if logic: query += f" {logic} "
-                    query += f"{field} {op} ?"
-                    params.append(f"%{val}%" if op == 'LIKE' else val)
-            query += ")"
+                    condition_str = ""
+                    # 3. 针对不同操作符生成对应的 SQL 片段
+                    if op == 'IS_EMPTY':
+                        condition_str = f"({field} IS NULL OR {field} = '')"
+                    elif op == 'IS_NOT_EMPTY':
+                        condition_str = f"({field} IS NOT NULL AND {field} != '')"
+                    elif val:  # 常规操作符必须有值
+                        condition_str = f"{field} {op} ?"
+                        params.append(f"%{val}%" if op == 'LIKE' else val)
+                    else:
+                        continue  # 无效条件直接跳过
+                    # 动态判定是否需要逻辑连接词
+                    logic = cond.get('logic', 'AND') if len(parts) > 0 else ""
+                    if logic:
+                        parts.append(logic)
+                    parts.append(condition_str)
+            # 只有当成功解析到有效参数时才追加 AND 块
+            if parts:
+                query += " AND (" + " ".join(parts) + ")"
     else:
-        # 简单模式处理
+        # ================= 普通模式逻辑 (此处为修复核心) =================
+        # 1. 补全参数获取：必须与前端 params.append 的 Key 严格一致
         search = request.args.get('search', '').strip()
         campus = request.args.get('campus', '').strip()
+        enter_year = request.args.get('enter_year', '').strip()  # ➕ 修复：获取年级
+        current_class = request.args.get('current_class', '').strip()  # ➕ 修复：获取班级
+
+        # 2. 补全 SQL 拼接
         if search:
             query += " AND (name LIKE ? OR custom_id LIKE ? OR national_id LIKE ?)"
             params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
-        if campus and campus != '全部':
+
+        # 需排除“全部”或空值，防止误触发过滤
+        if campus and campus not in ('全部', ''):
             query += " AND campus = ?"
             params.append(campus)
 
-    # 2. 执行查询
+        if enter_year and enter_year not in ('全部', ''):
+            query += " AND enter_year = ?"
+            params.append(enter_year)
+
+        if current_class and current_class not in ('全部', ''):
+            query += " AND current_class = ?"
+            params.append(current_class)
+
+    # 3. 执行导出
     query += " ORDER BY enter_year DESC, campus, current_class, custom_id"
     conn = sqlite3.connect(MAIN_DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -481,19 +537,15 @@ def export_query_students():
     conn.close()
 
     students_data = [dict(row) for row in rows]
-
-    # 3. 调用工具函数生成 Excel
     template_path = os.path.join(BASE_DIR, 'static', 'files', '学生信息批量修改模板.xlsx')
 
     try:
-        from utils.excel_exporter import generate_students_query_excel
         excel_io = generate_students_query_excel(students_data, template_path)
+        return send_file(
+            excel_io,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='查询结果批量下载.xlsx'
+        )
     except Exception as e:
         return jsonify({"status": "error", "message": f"导出失败: {str(e)}"}), 500
-
-    return send_file(
-        excel_io,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name='查询结果批量下载.xlsx'
-    )

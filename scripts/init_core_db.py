@@ -34,8 +34,8 @@ def setup_databases():
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             custom_id CHAR(10) NOT NULL UNIQUE,
-            school_id CHAR(19) UNIQUE,
-            national_id CHAR(18) UNIQUE,
+            school_id CHAR(19),
+            national_id CHAR(18),
             name VARCHAR(10) NOT NULL,
             former_name VARCHAR(10),
             sex CHAR(2),

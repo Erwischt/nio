@@ -10,28 +10,28 @@
     .page-header { display: flex; align-items: center; margin-bottom: 25px; }
     h1 { font-size: 28px; font-weight: 600; margin: 0; color: var(--text-main); }
 
-    /* 进度条 (Wizard Steps) */
+    /* 进度条 (Wizard Steps) - 已升级为 4 步 */
     .wizard-steps { display: flex; justify-content: center; align-items: center; margin-bottom: 30px; padding: 15px 0; }
     .step { display: flex; align-items: center; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
     .step.completed { color: #34c759; }
     .step.active { color: var(--apple-blue); }
-    .step-circle { width: 28px; height: 28px; border-radius: 50%; background-color: #e5e5ea; color: white; display: flex; justify-content: center; align-items: center; margin-right: 8px; font-weight: 600; }
+    .step-circle { width: 26px; height: 26px; border-radius: 50%; background-color: #e5e5ea; color: white; display: flex; justify-content: center; align-items: center; margin-right: 8px; font-weight: 600; font-size: 13px; }
     .step.completed .step-circle { background-color: #34c759; }
     .step.active .step-circle { background-color: var(--apple-blue); box-shadow: 0 4px 10px rgba(0, 113, 227, 0.3); }
-    .step-line { width: 60px; height: 2px; background-color: #e5e5ea; margin: 0 15px; }
+    .step-line { width: 40px; height: 2px; background-color: #e5e5ea; margin: 0 12px; }
     .step.completed + .step-line { background-color: #34c759; opacity: 0.5; }
 
     /* 卡片与提示框 */
     .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 30px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 25px; }
     .info-box { background-color: #f5f9ff; border: 1px solid #cce0ff; border-radius: 10px; padding: 16px; margin-bottom: 20px; font-size: 14px; line-height: 1.6; color: #1d4ed8; display: flex; justify-content: space-between; align-items: center;}
-    
+
     /* 表格样式 (Apple Data Table) */
     .table-wrapper { border-radius: 10px; border: 1px solid #e5e5ea; overflow: hidden; margin-bottom: 20px; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
     th { background: #f5f5f7; padding: 12px 16px; font-size: 14px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid #e5e5ea; }
     td { padding: 12px 16px; font-size: 14px; color: var(--text-main); border-bottom: 1px solid #e5e5ea; }
     tr:last-child td { border-bottom: none; }
-    
+
     /* 状态标签 */
     .badge-success { background: #e8f8f0; color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
     .badge-warning { background: #fffbeb; color: #f59e0b; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
@@ -41,7 +41,7 @@
     .editable-cell:hover { background-color: #f0f7ff; color: var(--apple-blue); }
     .editable-cell::after { content: '✏️'; font-size: 12px; opacity: 0; transition: opacity 0.2s; }
     .editable-cell:hover::after { opacity: 1; }
-    
+
     .edit-input { padding: 6px 10px; border: 2px solid var(--apple-blue); border-radius: 6px; font-size: 14px; outline: none; width: 120px; box-shadow: 0 2px 8px rgba(0, 113, 227, 0.2); }
 
     /* 底部操作区 */
@@ -60,17 +60,22 @@
     <div class="wizard-steps">
         <div class="step completed">
             <div class="step-circle">✓</div>
-            <span>基础信息与成绩落盘</span>
+            <span>导入原始分</span>
         </div>
         <div class="step-line"></div>
         <div class="step active">
             <div class="step-circle">2</div>
-            <span>师资分布配置快照</span>
+            <span>核对师资快照</span>
         </div>
         <div class="step-line"></div>
         <div class="step">
             <div class="step-circle">3</div>
-            <span>数据分析引擎</span>
+            <span>核对学生快照</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+            <div class="step-circle">4</div>
+            <span>执行进阶分析</span>
         </div>
     </div>
 
@@ -104,17 +109,14 @@
                 </tbody>
             </table>
         </div>
-        
+
         <div class="actions">
             <button onclick="submitAndProceed()" class="btn-submit">
-                <span>🚀 确认无误，进入数据分析引擎</span>
+                <span>🚀 确认无误，进入下一步（学生快照核对）</span>
             </button>
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
 <script>
     const examId = "{{ exam_id }}";
     const gradeYear = "{{ grade }}";
@@ -125,18 +127,33 @@
         loadMappingData();
     });
 
+    // 🌟 增强版：带终极错误捕获的数据拉取
     function loadMappingData() {
         fetch(`/scoresManagement/api/teacher_mapping?exam_id=${examId}&grade=${gradeYear}`)
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`服务器 HTTP 报错，状态码: ${res.status}`);
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    return res.json();
+                } else {
+                    throw new Error("服务器返回了非 JSON 数据（极大概率是 Flask 报错崩溃）");
+                }
+            })
             .then(data => {
-                if(data.success) {
+                if (data.success || data.status === 'success') {
                     renderTable(data.data);
                 } else {
-                    alert("加载数据失败：" + data.message);
+                    alert("❌ 加载数据失败：" + (data.message || "未知原因"));
+                    document.getElementById('mapping_tbody').innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--apple-red); font-weight: 600; padding: 40px;">数据拉取被后端拒绝：${data.message}</td></tr>`;
                 }
+            })
+            .catch(err => {
+                console.error("Fetch 请求发生异常:", err);
+                document.getElementById('mapping_tbody').innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--apple-red); font-weight: 600; padding: 40px;">❌ 页面脚本遭遇严重异常：<br><br>${err.message}<br><br>💡 请按 F12 查看 Network 面板的详细报错。</td></tr>`;
             });
     }
 
+    // 渲染表格
     function renderTable(rows) {
         const tbody = document.getElementById('mapping_tbody');
         tbody.innerHTML = '';
@@ -145,8 +162,8 @@
         rows.forEach(row => {
             if (!row.matched) unmatchedCount++;
 
-            const statusHtml = row.matched 
-                ? `<span class="badge-success">✅ 匹配 (UID:${row.teacher_uid})</span>` 
+            const statusHtml = row.matched
+                ? `<span class="badge-success">✅ 匹配 (UID:${row.teacher_uid})</span>`
                 : `<span class="badge-warning">⚠️ 未找到账号</span>`;
 
             const tr = document.createElement('tr');
@@ -168,20 +185,17 @@
 
     // 变身为输入框
     function makeEditable(spanElement, mappingId, currentName) {
-        // 如果已经是 input，则不处理
         if(spanElement.querySelector('input')) return;
 
         const input = document.createElement('input');
         input.type = 'text';
         input.value = currentName;
         input.className = 'edit-input';
-        
-        // 替换 DOM
+
         spanElement.innerHTML = '';
         spanElement.appendChild(input);
         input.focus();
 
-        // 绑定保存事件 (失焦或按回车)
         input.addEventListener('blur', () => saveMapping(mappingId, input.value, spanElement));
         input.addEventListener('keypress', (e) => {
             if(e.key === 'Enter') input.blur();
@@ -197,52 +211,48 @@
             return;
         }
 
-        // 显示加载状态
         spanElement.innerHTML = `<span style="color:#86868b;">🔄 校验中...</span>`;
 
-        fetch('/scoresManagement/api/teacher_mapping', {
-            method: 'POST',
+        fetch('/scoresManagement/api/teacher_mapping/update_single', {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: mappingId,
-                teacher_name: newName,
-                grade: gradeYear
-            })
+            body: JSON.stringify({ id: mappingId, teacher_name: newName, grade: gradeYear })
         })
         .then(res => res.json())
         .then(data => {
-            if(data.success) {
-                // 恢复为纯文本并更新 onclick 事件的当前值
-                spanElement.innerHTML = data.teacher_name;
-                spanElement.onclick = () => makeEditable(spanElement, mappingId, data.teacher_name);
+            if(data.success || data.status === 'success') {
+                const updatedName = data.teacher_name || newName;
+                spanElement.innerHTML = updatedName;
+                spanElement.onclick = () => makeEditable(spanElement, mappingId, updatedName);
 
-                // 更新对应行的状态图标
                 const statusTd = document.getElementById(`status_td_${mappingId}`);
                 if(data.matched) {
                     statusTd.innerHTML = `<span class="badge-success">✅ 匹配</span>`;
                 } else {
                     statusTd.innerHTML = `<span class="badge-warning">⚠️ 未找到账号</span>`;
                 }
-                
-                // 重新统计整个页面的异常数量 (这里为了稳妥，可以直接重新调一遍 loadMappingData()，或者前端自减增，这里使用前者保持严格一致)
                 loadMappingData();
             } else {
                 alert("修改失败：" + data.message);
-                loadMappingData(); // 失败则还原
+                loadMappingData();
             }
+        })
+        .catch(err => {
+            alert("请求异常，请检查网络！");
+            loadMappingData();
         });
     }
 
-    // 弱拦截逻辑与放行
+    // ================= 🌟 找回丢失的跳转函数 =================
+    // 弱拦截逻辑与跳转
     function submitAndProceed() {
         if (unmatchedCount > 0) {
-            const confirmed = confirm(`⚠️ 弱拦截提示：\n\n当前快照中仍有 ${unmatchedCount} 条记录未匹配到系统账号。\n这些代课老师将无法登录系统查看本次考试的数据大屏。\n\n您确定要忽略这些警告，强制进入计算阶段吗？`);
-            if (!confirmed) return; // 老师选择了取消，留在当前页继续改
+            const confirmed = confirm(`⚠️ 弱拦截提示：\n\n当前快照中仍有 ${unmatchedCount} 条记录未匹配到系统账号。\n这些代课老师将无法登录系统查看本次考试的数据大屏。\n\n您确定要忽略这些警告，强制进入下一步吗？`);
+            if (!confirmed) return;
         }
 
-        // 成功放行，前往第三步（计算引擎）
-        // 假设第三步的路由为 /scoresManagement/engine
-        window.location.href = `/scoresManagement/engine?exam_id=${examId}&grade=${gradeYear}`;
+        // 成功放行，前往第三步（学生快照核对）
+        window.location.href = `/scoresManagement/dynamic_student_mapping_hub?exam_id=${examId}&grade=${gradeYear}`;
     }
 </script>
 {% endblock %}
