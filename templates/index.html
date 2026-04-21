@@ -5,9 +5,106 @@
 {% block head %}
 <style>
     .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
-    .welcome-banner { background: linear-gradient(135deg, #0071e3, #439cfb); color: white; padding: 40px; border-radius: var(--border-radius); margin-bottom: 30px; box-shadow: 0 10px 30px rgba(0, 113, 227, 0.2); }
-    .welcome-banner h1 { margin: 0 0 10px 0; font-size: 32px; }
-    .welcome-banner p { margin: 0; font-size: 16px; opacity: 0.9; }
+
+    /* ========== 轮播图核心样式 ========== */
+    .welcome-banner {
+        position: relative;
+        height: 260px; /* 固定高度确保图片有展示空间 */
+        border-radius: var(--border-radius);
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0, 113, 227, 0.2);
+        overflow: hidden;
+        background: #000; /* 纯黑底色防止模糊图边缘露白 */
+    }
+
+    .carousel-slide {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        opacity: 0;
+        transition: opacity 0.8s ease-in-out;
+        z-index: 1;
+    }
+    .carousel-slide.active { opacity: 1; z-index: 2; }
+
+    /* 第一帧：原有纯文字渐变卡片 */
+    .slide-text {
+        background: linear-gradient(135deg, #0071e3, #439cfb);
+        color: white;
+        padding: 40px;
+        height: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .slide-text h1 { margin: 0 0 10px 0; font-size: 32px; }
+    .slide-text p { margin: 0; font-size: 16px; opacity: 0.9; }
+
+    /* 方案C：双层模糊沉浸结构 */
+    .slide-img-bg {
+        position: absolute;
+        top: -10%; left: -10%; right: -10%; bottom: -10%; /* 扩大外围防止模糊边缘露馅 */
+        background-size: cover;
+        background-position: center;
+        filter: blur(25px) brightness(0.65); /* 强烈高斯模糊与暗化 */
+        z-index: 1;
+    }
+    .slide-img-fg {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        z-index: 2;
+    }
+
+    /* ========== Apple风格控制组件 ========== */
+    .carousel-control {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 40px; height: 40px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        color: rgba(255, 255, 255, 0.9);
+        border: none;
+        font-size: 20px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        z-index: 10;
+        opacity: 0; /* 默认隐藏 */
+        transition: all 0.3s ease;
+    }
+    .welcome-banner:hover .carousel-control { opacity: 1; }
+    .carousel-control:hover { background: rgba(255, 255, 255, 0.5); color: #fff; transform: translateY(-50%) scale(1.05); }
+    .carousel-control.prev { left: 20px; }
+    .carousel-control.next { right: 20px; }
+
+    /* 胶囊指示器 */
+    .carousel-indicators {
+        position: absolute;
+        bottom: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        z-index: 10;
+    }
+    .indicator {
+        width: 8px; height: 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.4);
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .indicator.active {
+        width: 24px; /* 激活时拉长为胶囊 */
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    /* 其他模块样式保持不变 */
     .module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
     .module-card { background: var(--card-bg); padding: 30px; border-radius: var(--border-radius); text-decoration: none; color: var(--text-main); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); transition: 0.3s; display: flex; flex-direction: column; }
     .module-card:hover { transform: translateY(-5px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08); }
@@ -19,13 +116,34 @@
 
 {% block content %}
 <div class="container">
-    <div class="welcome-banner">
-        {% if session.get('uid') %}
-            <h1>你好，{{ session.get('real_name') }}老师</h1>
-            <p>欢迎回到校园数据平台，请选择您要办理的业务模块。</p>
-        {% else %}
-            <h1>欢迎访问 校园数据平台</h1>
-            <p>请选择您要了解的业务模块。进入具体模块操作需进行教职工身份验证。</p>
+    <div class="welcome-banner" id="bannerCarousel">
+        <div class="carousel-slide slide-text active">
+            {% if session.get('uid') %}
+                <h1>你好，{{ session.get('real_name') }}老师</h1>
+                <p>欢迎回到校园数据平台，请选择您要办理的业务模块。</p>
+            {% else %}
+                <h1>欢迎访问 校园数据平台</h1>
+                <p>请选择您要了解的业务模块。进入具体模块操作需进行教职工身份验证。</p>
+            {% endif %}
+        </div>
+
+        {% for img in banner_images %}
+        <div class="carousel-slide">
+            <div class="slide-img-bg" style="background-image: url('/static/images/banner/{{ img }}');"></div>
+            <div class="slide-img-fg" style="background-image: url('/static/images/banner/{{ img }}');"></div>
+        </div>
+        {% endfor %}
+
+        {% if banner_images %}
+        <button class="carousel-control prev" onclick="prevSlide()">&#10094;</button>
+        <button class="carousel-control next" onclick="nextSlide()">&#10095;</button>
+
+        <div class="carousel-indicators">
+            <div class="indicator active" onclick="goToSlide(0)"></div>
+            {% for i in range(banner_images|length) %}
+            <div class="indicator" onclick="goToSlide({{ loop.index }})"></div>
+            {% endfor %}
+        </div>
         {% endif %}
     </div>
 
@@ -35,12 +153,71 @@
             <div class="module-title">学生信息管理</div>
             <div class="module-desc">录入、修改、检索全校学生档案，支持 Excel 批量导入导出及详尽数据审计。</div>
         </a>
-        
+
         <a href="/scoresManagement" class="module-card">
             <div class="module-icon">📊</div>
             <div class="module-title">学业成绩管理</div>
             <div class="module-desc">管理教师、班级对应关系及学生历次考试成绩。</div>
         </a>
+
+        <a href="/studentAwardManagement" class="module-card">
+            <div class="module-icon">🏅</div>
+            <div class="module-title">学生奖惩管理</div>
+            <div class="module-desc">录入、修改学生所受奖励及处分相关信息。</div>
+        </a>
     </div>
 </div>
+
+<script>
+    {% if banner_images %}
+    // 极简轮播控制逻辑
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.carousel-slide');
+    const indicators = document.querySelectorAll('.indicator');
+    const totalSlides = slides.length;
+    let slideInterval;
+
+    function updateSlide(index) {
+        // 移除旧状态
+        slides[currentSlide].classList.remove('active');
+        indicators[currentSlide].classList.remove('active');
+
+        // 计算新索引 (支持循环)
+        currentSlide = (index + totalSlides) % totalSlides;
+
+        // 增加新状态
+        slides[currentSlide].classList.add('active');
+        indicators[currentSlide].classList.add('active');
+    }
+
+    function nextSlide() {
+        updateSlide(currentSlide + 1);
+        resetTimer(); // 用户手动干预，重置自动播放计时
+    }
+
+    function prevSlide() {
+        updateSlide(currentSlide - 1);
+        resetTimer();
+    }
+
+    function goToSlide(index) {
+        updateSlide(index);
+        resetTimer();
+    }
+
+    function startTimer() {
+        slideInterval = setInterval(() => {
+            updateSlide(currentSlide + 1);
+        }, 10000); // 5秒自动轮播
+    }
+
+    function resetTimer() {
+        clearInterval(slideInterval);
+        startTimer();
+    }
+
+    // 初始化启动
+    startTimer();
+    {% endif %}
+</script>
 {% endblock %}

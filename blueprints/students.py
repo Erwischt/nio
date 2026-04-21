@@ -98,7 +98,7 @@ def query_students():
         filters = data.get('filters', [])
         allowed_fields = {'custom_id', 'school_id', 'national_id', 'name', 'sex', 'enter_year', 'campus',
                           'current_class', 'subject', 'language_type', 'category', 'major', 'at_school',
-                          'boarding_status', 'remarks'}
+                          'boarding_status', 'remarks', 'former_name'}
         allowed_ops = {'=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IS_EMPTY', 'IS_NOT_EMPTY'}
         for i, f in enumerate(filters):
             field = f.get('field')
@@ -531,3 +531,24 @@ def export_query_students():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": f"导出失败: {str(e)}"}), 500
+
+
+@students_bp.route('/api/<custom_id>/logs', methods=['GET'])
+@login_required
+def get_student_logs(custom_id):
+    """拉取指定学生的修改日志 (时间倒序)"""
+    try:
+        with closing(sqlite3.connect(LOG_DB_FILE)) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT action_type, details, timestamp, editor 
+                FROM change_logs 
+                WHERE custom_id = ? 
+                ORDER BY timestamp DESC
+            ''', (custom_id,))
+            rows = cursor.fetchall()
+
+        return jsonify({"status": "success", "data": [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"拉取日志失败: {str(e)}"}), 500

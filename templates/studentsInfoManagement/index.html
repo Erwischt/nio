@@ -18,7 +18,7 @@
     .controls-actions { display: flex; gap: 10px; }
 
     button { background-color: var(--apple-blue); color: white; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
-    button:hover { background-color: #0077ed; }
+    button:not(.quick-filter-btn):hover { background-color: #0077ed; }
     button.secondary { background-color: #e8e8ed; color: var(--text-main); }
     button.secondary:hover { background-color: #d2d2d7; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -54,6 +54,20 @@
     .form-group label { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
     .form-section { grid-column: 1 / -1; font-size: 14px; font-weight: 600; color: var(--apple-blue); margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #e8e8ed; padding-bottom: 5px; }
     .confirm-modal { width: 320px; text-align: center; }
+    /* 快捷筛选胶囊按钮样式 (马卡龙色系与悬浮特效) */
+    .quick-filter-btn { border: none; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.3s ease;}
+    .quick-filter-btn:active { transform: scale(0.95); }
+    .quick-filter-btn:hover { transform: translateY(-5px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08); }
+
+    /* 原有基础配色 */
+    .quick-btn-green { background-color: #dcfce7; color: #15803d; }
+    .quick-btn-blue { background-color: #e0f2fe; color: #0369a1; }
+    .quick-btn-purple { background-color: #f3e8ff; color: #7e22ce; }
+    .quick-btn-yellow { background-color: #fdffbf; color: #713f12; }
+    .quick-btn-pink { background-color: #f3bcd7; color: #831843; }
+    .quick-btn-mint { background-color: #aaedd8; color: #0f766e; }
+    .quick-btn-iceblue { background-color: #b4fcff; color: #0369a1; }
+
 </style>
 {% endblock %}
 
@@ -90,6 +104,15 @@
         </div>
 
         <div id="advancedFilterBar" class="filter-bar" style="display: none; flex-direction: column; align-items: flex-start;">
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; width: 100%; align-items: center; border-bottom: 1px dashed #e8e8ed; padding-bottom: 12px;">
+                <span style="font-size: 13px; color: var(--text-secondary); font-weight: 500;">✨ 插入快捷预设：</span>
+                <button type="button" class="quick-filter-btn quick-btn-green" onclick="addSpecificAdvRow('AND', 'at_school', '=', '正常在校')">在校生</button>
+                <button type="button" class="quick-filter-btn quick-btn-blue" onclick="addSpecificAdvRow('AND', 'boarding_status', '=', '住宿')">住宿生</button>
+                <button type="button" class="quick-filter-btn quick-btn-purple" onclick="addSpecificAdvRow('AND', 'category', '!=', '普通类')">艺体生</button>
+                <button type="button" class="quick-filter-btn quick-btn-yellow" onclick="addSpecificAdvRow('AND', 'former_name', 'IS_NOT_EMPTY', '')">改过名的学生</button>
+                <button type="button" class="quick-filter-btn quick-btn-pink" onclick="addSpecificAdvRow('AND', 'remarks', 'LIKE', '复读')">复读生</button>
+                <button type="button" class="quick-filter-btn quick-btn-mint" onclick="addSpecificAdvRow('AND', 'remarks', 'LIKE', '借读')">借读生</button>
+            </div>
             <div id="advRowsContainer" style="width: 100%;"></div>
             <div style="margin-top: 5px; display: flex; gap: 10px;">
                 <button class="secondary" onclick="addAdvRow()">+ 添加条件</button>
@@ -113,17 +136,28 @@
         </table>
         
         <div class="pagination">
+            <button id="btnFirst" class="secondary" disabled onclick="changePage(1)">首页</button>
             <button id="btnPrev" class="secondary" disabled onclick="changePage(currentPage - 1)">上一页</button>
             <span id="pageInfo">未执行查询</span>
             <button id="btnNext" class="secondary" disabled onclick="changePage(currentPage + 1)">下一页</button>
+            <button id="btnLast" class="secondary" disabled onclick="changePage(totalPages)">末页</button>
+            <span style="margin-left: 10px; display: inline-flex; align-items: center; gap: 5px;">
+                <input type="number" id="jumpPageInput" min="1" placeholder="页码" style="width: 60px; padding: 5px 8px; text-align: center;" onkeypress="if(event.key === 'Enter') jumpToPage()">
+                <button class="secondary" onclick="jumpToPage()" style="padding: 5px 10px;">跳转</button>
+            </span>
         </div>
     </div>
 </div>
 
 <div class="overlay" id="formOverlay">
     <div class="modal">
-        <h2 id="modalTitle" style="margin-top:0">学生信息</h2>
-        <p id="modalSubtitle" style="font-size:12px; color:var(--text-secondary);">注：带有 * 的为必填项</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h2 id="modalTitle" style="margin-top:0; margin-bottom: 5px;">学生信息</h2>
+                <p id="modalSubtitle" style="font-size:12px; color:var(--text-secondary); margin: 0 0 15px 0;">注：带有 * 的为必填项</p>
+            </div>
+            <button type="button" onclick="closeFormModal()" style="background: transparent; color: #86868b; font-size: 24px; padding: 0; line-height: 1; margin-top: -5px;" title="关闭">&times;</button>
+        </div>
         <form id="studentForm">
             <div class="form-grid">
                 <div class="form-section">📌 基础身份信息</div>
@@ -164,6 +198,17 @@
                 <div class="form-section">⏱️ 系统记录</div>
                 <div class="form-group" style="grid-column: 1 / -1;"><label>系统最后更新时间</label><input type="text" id="f_last_edit_at" disabled placeholder="系统自动生成"></div>
             </div>
+            <div id="studentHistoryContainer" style="display: none; margin-bottom: 20px;">
+                <div class="form-section" style="margin-top: 0;">🕒 学生信息修改历史</div>
+                <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e8e8ed; border-radius: 6px; background: #fbfbfd; padding: 0;">
+                    <table style="margin: 0; border: none; font-size: 12px;">
+                        <thead style="background: white; position: sticky; top: 0;">
+                            <tr><th style="padding: 8px 12px;">时间</th><th style="padding: 8px 12px;">操作人</th><th style="padding: 8px 12px;">类型</th><th style="padding: 8px 12px;">详情</th></tr>
+                        </thead>
+                        <tbody id="historyTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                 <button type="button" class="secondary" onclick="closeFormModal()">关闭</button>
                 <button type="button" id="btnSaveStudent" onclick="validateAndSubmit()">保存</button>
@@ -195,6 +240,7 @@
         'school_id': { label: '省学籍辅号', type: 'text' },
         'national_id': { label: '身份证号', type: 'text' },
         'name': { label: '姓名', type: 'text' },
+        'former_name': { label: '曾用名', type: 'text' },
         'sex': { label: '性别', type: 'select', options: ['男', '女'] },
         'enter_year': { label: '入学年份', type: 'text' },
         'campus': { label: '校区', type: 'select', options: ['校本部', '礼贤校区'] },
@@ -225,6 +271,28 @@
         document.getElementById('s_year').value = '';
         document.getElementById('s_class').value = '';
         loadStudents(1);
+    }
+
+    // 新增：一键快捷生成高级筛选行
+    function addSpecificAdvRow(logic, field, op, val) {
+        addAdvRow();
+        const container = document.getElementById('advRowsContainer');
+        const rows = container.querySelectorAll('.adv-row');
+        const targetRow = rows[rows.length - 1]; // 锁定刚生成的那一行
+
+        const logicSelect = targetRow.querySelector('.logic-select');
+        if (logicSelect && rows.length > 1) logicSelect.value = logic;
+
+        const fieldSelect = targetRow.querySelector('.field-select');
+        fieldSelect.value = field;
+        handleFieldChange(fieldSelect); // 触发联动，渲染出正确的输入框形态
+
+        const opSelect = targetRow.querySelector('.op-select');
+        opSelect.value = op;
+        handleOpChange(opSelect);
+
+        const valInput = targetRow.querySelector('.val-input');
+        if (valInput) valInput.value = val;
     }
 
     function addAdvRow() {
@@ -287,6 +355,17 @@
 
     function changePage(p) { if(p >= 1 && p <= totalPages) loadStudents(p); }
 
+    function jumpToPage() {
+        const input = document.getElementById('jumpPageInput');
+        const targetPage = parseInt(input.value);
+        if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages) {
+            changePage(targetPage);
+            input.value = ''; // 跳转后清空输入框保持整洁
+        } else {
+            alert(`请输入 1 到 ${totalPages} 之间的有效页码！`);
+        }
+    }
+
     function loadStudents(pageNum) {
         currentPage = pageNum;
         const payload = { mode: currentMode, page: currentPage, limit: 20 };
@@ -327,6 +406,8 @@
                 document.getElementById('pageInfo').innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页 (共 ${data.total} 条)`;
                 document.getElementById('btnPrev').disabled = (currentPage === 1);
                 document.getElementById('btnNext').disabled = (currentPage === totalPages || totalPages === 0);
+                document.getElementById('btnFirst').disabled = (currentPage === 1);
+                document.getElementById('btnLast').disabled = (currentPage === totalPages || totalPages === 0);
             }
         }).catch(err => alert("查询请求失败"));
     }
@@ -465,6 +546,7 @@
         document.querySelectorAll('#studentForm input, #studentForm select').forEach(input => input.disabled = (input.id === 'f_last_edit_at'));
         toggleBoardingFields(); 
         document.getElementById('btnSaveStudent').style.display = 'inline-block';
+        document.getElementById('studentHistoryContainer').style.display = 'none';
         document.getElementById('formOverlay').style.display = 'flex'; 
     }
 
@@ -476,15 +558,46 @@
         ['custom_id','school_id','national_id','name','sex','former_name','campus','enter_year','current_class','subject', 'language_type','category','major','at_school','boarding_status','apartment','dormitory','remarks','last_edit_at'].forEach(k => {
             const el = document.getElementById('f_' + k);
             if(el) {
-                // 如果是新增且字段为空，默认选英语
                 el.value = s[k] || (k === 'language_type' ? '英语' : (k === 'last_edit_at' ? '无历史修改记录' : ''));
             }
         });
         document.querySelectorAll('#studentForm input, #studentForm select').forEach(input => {
             input.disabled = (input.id === 'f_last_edit_at') ? true : (mode === 'view');
         });
-        if (mode === 'edit') toggleBoardingFields(); 
+        if (mode === 'edit') toggleBoardingFields();
         document.getElementById('btnSaveStudent').style.display = mode === 'view' ? 'none' : 'inline-block';
+
+        // ----------------- 新增：日志拉取与渲染逻辑 -----------------
+        const historyContainer = document.getElementById('studentHistoryContainer');
+        const historyBody = document.getElementById('historyTableBody');
+
+        if (mode === 'view' && s.custom_id) {
+            historyContainer.style.display = 'block';
+            historyBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#86868b;">正在加载...</td></tr>';
+
+            fetch(`/students/api/${s.custom_id}/logs`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success' && data.data.length > 0) {
+                        historyBody.innerHTML = data.data.map(log => `
+                            <tr>
+                                <td style="padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid #e8e8ed;">${log.timestamp}</td>
+                                <td style="padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid #e8e8ed;">${log.editor}</td>
+                                <td style="padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid #e8e8ed;"><span style="background:#e8e8ed; padding: 2px 6px; border-radius:4px;">${log.action_type}</span></td>
+                                <td style="padding: 8px 12px; border-bottom: 1px solid #e8e8ed;">${log.details}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        historyBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#86868b;">暂无修改历史记录</td></tr>';
+                    }
+                }).catch(() => {
+                    historyBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px; color:var(--apple-red);">拉取历史记录失败，请检查网络</td></tr>';
+                });
+        } else {
+            historyContainer.style.display = 'none';
+        }
+        // ------------------------------------------------------------
+
         document.getElementById('formOverlay').style.display = 'flex'; 
     }
 

@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}学生奖惩管理{% endblock %}
+
+{% block head %}
+<style>
+    .container { max-width: 1250px; margin: 30px auto; padding: 0 20px;} 
+    .page-header { display: flex; align-items: center; margin-bottom: 20px; }
+    .back-btn { display: inline-flex; align-items: center; color: var(--apple-blue); text-decoration: none; font-weight: 500; font-size: 15px; margin-right: 20px; transition: 0.2s; }
+    .back-btn:hover { color: #0077ed; opacity: 0.8; }
+    h1 { font-size: 28px; font-weight: 600; margin: 0; flex-grow: 1; text-align: center; margin-right: 80px; }
+
+    .card { background: var(--card-bg); backdrop-filter: blur(20px); border-radius: var(--border-radius); padding: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 20px; }
+    .controls-header { display: flex; justify-content: flex-end; align-items: flex-start; margin-bottom: 15px; }
+    .controls-actions { display: flex; gap: 10px; }
+
+    button { background-color: var(--apple-blue); color: white; border: none; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+    button:hover { background-color: #0077ed; }
+    button.secondary { background-color: #e8e8ed; color: var(--text-main); }
+    button.secondary:hover { background-color: #d2d2d7; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    input[type="text"], input[type="date"], select { padding: 9px 12px; border-radius: 6px; border: 1px solid #d2d2d7; font-size: 14px; outline: none; transition: 0.2s; background-color: white; box-sizing: border-box; }
+    input[type="text"]:focus, input[type="date"]:focus, select:focus { border-color: var(--apple-blue); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2); }
+    input:disabled, select:disabled { background-color: #fbfbfd; color: #1d1d1f; cursor: not-allowed; border: 1px dashed #d2d2d7; }
+
+    .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; background: #fbfbfd; padding: 15px; border-radius: 10px; border: 1px solid #e8e8ed; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #d2d2d7; }
+    th { font-weight: 500; color: var(--text-secondary); }
+
+    button.action-btn { padding: 5px 10px; font-size: 12px; margin-right: 5px; border-radius: 6px; }
+    button.btn-success { background-color: #34c759; }
+    button.btn-success:hover { background-color: #2eb050; }
+    button.btn-danger { background-color: var(--apple-red); }
+    button.btn-danger:hover { background-color: #d70015; }
+
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
+
+    .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px); z-index: 100; justify-content: center; align-items: center; }
+    .modal { margin-top: 50px; background: white; padding: 30px; border-radius: var(--border-radius); width: 650px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    .form-section { grid-column: 1 / -1; font-size: 14px; font-weight: 600; color: var(--apple-blue); margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #e8e8ed; padding-bottom: 5px; }
+
+    .mini-table th, .mini-table td { padding: 8px; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <a href="/" class="back-btn">‹ 返回主页</a>
+        <h1>学生奖惩管理</h1>
+    </div>
+
+    <div class="card">
+        <div class="controls-header">
+            <div class="controls-actions">
+                <button class="secondary" onclick="window.location.href='/static/files/学生奖惩导入模板.xlsx'">📥 下载模板</button>
+                <input type="file" id="excelFileInput" accept=".xls,.xlsx" style="display: none;" onchange="uploadExcel()">
+                <button class="secondary" onclick="document.getElementById('excelFileInput').click()">📤 批量导入</button>
+                <button onclick="openSearchStudentModal()">+ 单个新建</button>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <input type="text" id="s_keyword" placeholder="搜姓名、内部编号..." style="width:220px;" onkeypress="handleEnter(event)">
+            <select id="s_category" style="width:140px;">
+                <option value="">全部类别</option>
+                <option value="奖励">奖励</option>
+                <option value="惩罚">惩罚</option>
+            </select>
+            <select id="s_level" style="width:140px;">
+                <option value="">全部级别</option>
+                <option value="国家级">国家级</option>
+                <option value="省市级">省市级</option>
+                <option value="区级">区级</option>
+                <option value="校级">校级</option>
+            </select>
+            <button onclick="loadAwards(1)">查询</button>
+            <button class="secondary" onclick="resetFilters()">重置</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>内部编号</th><th>姓名</th><th>日期</th><th>类别</th><th>级别</th><th>奖惩名称</th><th>颁发单位</th>
+                    <th style="width: 160px;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="awardTableBody">
+                <tr><td colspan="8" style="text-align:center; color: #86868b; padding: 40px;">请在上方输入条件并点击“查询”加载数据</td></tr>
+            </tbody>
+        </table>
+        
+        <div class="pagination">
+            <button id="btnFirst" class="secondary" disabled onclick="changePage(1)">首页</button>
+            <button id="btnPrev" class="secondary" disabled onclick="changePage(currentPage - 1)">上一页</button>
+            <span id="pageInfo">未执行查询</span>
+            <button id="btnNext" class="secondary" disabled onclick="changePage(currentPage + 1)">下一页</button>
+            <button id="btnLast" class="secondary" disabled onclick="changePage(totalPages)">末页</button>
+            <span style="margin-left: 10px; display: inline-flex; align-items: center; gap: 5px;">
+                <input type="number" id="jumpPageInput" min="1" placeholder="页码" style="width: 60px; padding: 5px 8px; text-align: center;" onkeypress="if(event.key === 'Enter') jumpToPage()">
+                <button class="secondary" onclick="jumpToPage()" style="padding: 5px 10px;">跳转</button>
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="searchStudentOverlay">
+    <div class="modal" style="width: 700px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h2 style="margin-top:0; margin-bottom: 5px;">步骤 1：检索目标学生</h2>
+                <p style="font-size:12px; color:var(--text-secondary); margin: 0 0 15px 0;">请输入关键词检索后，点击“选择”为其录入奖惩信息</p>
+            </div>
+            <button type="button" onclick="closeSearchModal()" style="background: transparent; color: #86868b; font-size: 24px; padding: 0; line-height: 1; margin-top: -5px;" title="关闭">&times;</button>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <input type="text" id="mini_search_keyword" placeholder="输入姓名或编号..." style="flex-grow: 1;" onkeypress="if(event.key === 'Enter') searchStudentForAward()">
+            <select id="mini_search_campus" style="width: 130px;">
+                <option value="">全部校区</option>
+                <option value="校本部">校本部</option>
+                <option value="礼贤校区">礼贤校区</option>
+            </select>
+            <input type="text" id="mini_search_year" placeholder="年级(留空则不限制)" style="width: 140px;" onkeypress="if(event.key === 'Enter') searchStudentForAward()">
+            <button onclick="searchStudentForAward()">检索</button>
+        </div>
+
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e8e8ed; border-radius: 6px;">
+            <table class="mini-table">
+                <thead style="position: sticky; top: 0; background: #fbfbfd;">
+                    <tr><th>内部编号</th><th>姓名</th><th>性别</th><th>校区</th><th>班级</th><th>操作</th></tr>
+                </thead>
+                <tbody id="miniStudentTableBody">
+                    <tr><td colspan="6" style="text-align:center; padding: 20px; color: #86868b;">等待检索...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="awardFormOverlay">
+    <div class="modal">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h2 id="modalTitle" style="margin-top:0; margin-bottom: 5px;">奖惩信息录入</h2>
+                <p id="modalSubtitle" style="font-size:12px; color:var(--text-secondary); margin: 0 0 15px 0;">注：带有 * 的为必填项</p>
+            </div>
+            <button type="button" onclick="closeAwardModal()" style="background: transparent; color: #86868b; font-size: 24px; padding: 0; line-height: 1; margin-top: -5px;" title="关闭">&times;</button>
+        </div>
+        
+        <form id="awardForm">
+            <div class="form-grid">
+                <div class="form-section">📌 目标学生 (系统已锁定)</div>
+                <div class="form-group"><label>内部编号</label><input type="text" id="f_custom_id" disabled style="background:#fbfbfd; font-weight: bold;"></div>
+                <div class="form-group"><label>学生姓名</label><input type="text" id="f_student_name" disabled style="background:#fbfbfd; font-weight: bold;"></div>
+
+                <div class="form-section">📝 奖惩详情</div>
+                <div class="form-group"><label>发生日期 *</label><input type="date" id="f_award_date"></div>
+                <div class="form-group"><label>类别 *</label>
+                    <select id="f_award_category">
+                        <option value="奖励">奖励</option>
+                        <option value="惩罚">惩罚</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>级别</label>
+                    <select id="f_award_level">
+                        <option value="">请选择</option>
+                        <option value="国家级">国家级</option>
+                        <option value="省市级">省级</option>
+                        <option value="市级">市级</option>
+                        <option value="区级">区级</option>
+                        <option value="校级">校级</option>
+                        <option value="校级以下">校级以下</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>奖惩名称 (例如: 市级三好学生) *</label><input type="text" id="f_award_name"></div>
+                <div class="form-group full-width"><label>颁发单位/执行单位</label><input type="text" id="f_issuing_authority"></div>
+                <div class="form-group full-width"><label>详细说明</label><input type="text" id="f_description" placeholder="请输入具体原因或细节描述"></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" class="secondary" onclick="closeAwardModal()">取消</button>
+                <button type="button" id="btnSaveAward" onclick="submitAwardData()">保存记录</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let currentEditId = null;
+    let currentPage = 1;
+    let totalPages = 1;
+
+    function handleEnter(e) { if(e.key === 'Enter') loadAwards(1); }
+
+    function resetFilters() {
+        document.getElementById('s_keyword').value = '';
+        document.getElementById('s_category').value = '';
+        document.getElementById('s_level').value = '';
+        loadAwards(1);
+    }
+
+    function changePage(p) { if(p >= 1 && p <= totalPages) loadAwards(p); }
+    function jumpToPage() {
+        const input = document.getElementById('jumpPageInput');
+        const targetPage = parseInt(input.value);
+        if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages) {
+            changePage(targetPage);
+            input.value = '';
+        } else {
+            alert(`请输入 1 到 ${totalPages} 之间的有效页码！`);
+        }
+    }
+
+    function loadAwards(pageNum) {
+        currentPage = pageNum;
+        const payload = {
+            page: currentPage,
+            limit: 20,
+            keyword: document.getElementById('s_keyword').value.trim(),
+            category: document.getElementById('s_category').value,
+            level: document.getElementById('s_level').value
+        };
+
+        fetch('/studentAwardManagement/api/query', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'success') {
+                totalPages = data.total_pages;
+                renderAwardTable(data.data);
+                document.getElementById('pageInfo').innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页 (共 ${data.total} 条)`;
+                document.getElementById('btnPrev').disabled = (currentPage === 1);
+                document.getElementById('btnFirst').disabled = (currentPage === 1);
+                document.getElementById('btnNext').disabled = (currentPage === totalPages || totalPages === 0);
+                document.getElementById('btnLast').disabled = (currentPage === totalPages || totalPages === 0);
+            }
+        }).catch(err => console.error(err));
+    }
+
+    function renderAwardTable(data) {
+        const tbody = document.getElementById('awardTableBody');
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: #86868b; padding: 40px;">未找到相关奖惩记录</td></tr>';
+            return;
+        }
+        data.forEach(item => {
+            const levelTag = item.award_level ? `<span style="background:#e8e8ed; padding: 2px 6px; border-radius:4px; font-size: 12px;">${item.award_level}</span>` : '';
+            const catColor = item.award_category === '奖励' ? '#34c759' : 'var(--apple-red)';
+            
+            tbody.innerHTML += `<tr>
+                <td>${item.custom_id}</td>
+                <td><strong>${item.student_name}</strong></td>
+                <td>${item.award_date}</td>
+                <td><strong style="color: ${catColor};">${item.award_category}</strong></td>
+                <td>${levelTag}</td>
+                <td>${item.award_name}</td>
+                <td>${item.issuing_authority || '-'}</td>
+                <td>
+                    <button class="action-btn btn-success" onclick="openAwardModal(${item.id}, 'view')">详情</button>
+                    <button class="action-btn" onclick="openAwardModal(${item.id}, 'edit')">编辑</button>
+                    <button class="action-btn btn-danger" onclick="deleteAward(${item.id})">删除</button>
+                </td>
+            </tr>`;
+        });
+    }
+
+    // ================== 双阶新建逻辑 ==================
+    function openSearchStudentModal() {
+        document.getElementById('mini_search_keyword').value = '';
+        document.getElementById('mini_search_campus').value = '';
+        document.getElementById('mini_search_year').value = '';
+        document.getElementById('miniStudentTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px; color: #86868b;">请在上方输入条件检索</td></tr>';
+        document.getElementById('searchStudentOverlay').style.display = 'flex';
+    }
+    function closeSearchModal() { document.getElementById('searchStudentOverlay').style.display = 'none'; }
+
+    function searchStudentForAward() {
+        const kw = document.getElementById('mini_search_keyword').value.trim();
+        const campus = document.getElementById('mini_search_campus').value;
+        const year = document.getElementById('mini_search_year').value.trim();
+
+        if(!kw && !campus && !year) { alert('请至少输入一个检索条件'); return; }
+
+        document.getElementById('miniStudentTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px; color: #86868b;">正在检索中...</td></tr>';
+
+        // 复用学生信息管理的 API 接口获取底表数据
+        fetch('/students/api/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: 'simple',
+                keyword: kw,
+                campus: campus,
+                enter_year: year,
+                page: 1,
+                limit: 10
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('miniStudentTableBody');
+            if(data.status === 'success' && data.data.length > 0) {
+                tbody.innerHTML = data.data.map(s => `
+                    <tr>
+                        <td>${s.custom_id}</td>
+                        <td><strong>${s.name}</strong></td>
+                        <td>${s.sex}</td>
+                        <td>${s.campus}</td>
+                        <td>${s.current_class}班</td>
+                        <td><button class="action-btn" onclick="selectStudentForAward('${s.custom_id}', '${s.name}')">选择此人</button></td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px; color: #86868b;">未找到匹配的学生</td></tr>';
+            }
+        });
+    }
+
+    function selectStudentForAward(custom_id, name) {
+        closeSearchModal();
+        currentEditId = null;
+        document.getElementById('awardForm').reset();
+        document.getElementById('modalTitle').innerText = '奖惩信息录入 (新建)';
+        document.getElementById('f_custom_id').value = custom_id;
+        document.getElementById('f_student_name').value = name;
+        
+        // 解除业务字段禁用状态
+        ['award_date', 'award_category', 'award_level', 'award_name', 'issuing_authority', 'description'].forEach(k => {
+            document.getElementById('f_' + k).disabled = false;
+        });
+        document.getElementById('btnSaveAward').style.display = 'inline-block';
+        document.getElementById('awardFormOverlay').style.display = 'flex';
+    }
+
+    // ================== 编辑与详情逻辑 ==================
+    function openAwardModal(id, mode) {
+        currentEditId = id;
+        document.getElementById('modalTitle').innerText = mode === 'view' ? '奖惩记录详情' : '编辑奖惩记录';
+        
+        fetch(`/studentAwardManagement/api/${id}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'success') {
+                const item = data.data;
+                document.getElementById('f_custom_id').value = item.custom_id;
+                document.getElementById('f_student_name').value = item.student_name;
+                ['award_date', 'award_category', 'award_level', 'award_name', 'issuing_authority', 'description'].forEach(k => {
+                    const el = document.getElementById('f_' + k);
+                    el.value = item[k] || '';
+                    el.disabled = (mode === 'view'); // 详情模式全禁用
+                });
+                
+                document.getElementById('btnSaveAward').style.display = mode === 'view' ? 'none' : 'inline-block';
+                document.getElementById('awardFormOverlay').style.display = 'flex';
+            } else {
+                alert('获取记录失败');
+            }
+        });
+    }
+    
+    function closeAwardModal() { document.getElementById('awardFormOverlay').style.display = 'none'; }
+
+    function submitAwardData() {
+        const payload = {
+            custom_id: document.getElementById('f_custom_id').value,
+            award_date: document.getElementById('f_award_date').value,
+            award_category: document.getElementById('f_award_category').value,
+            award_level: document.getElementById('f_award_level').value,
+            award_name: document.getElementById('f_award_name').value.trim(),
+            issuing_authority: document.getElementById('f_issuing_authority').value.trim(),
+            description: document.getElementById('f_description').value.trim()
+        };
+
+        if(!payload.award_date || !payload.award_name) {
+            alert("发生日期和奖惩名称为必填项！");
+            return;
+        }
+
+        const url = currentEditId ? `/studentAwardManagement/api/${currentEditId}` : '/studentAwardManagement/api';
+        fetch(url, { 
+            method: currentEditId ? 'PUT' : 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+        })
+        .then(res => res.json()).then(data => {
+            if(data.status === 'success') { 
+                alert('保存成功！'); 
+                closeAwardModal(); 
+                loadAwards(currentPage); 
+            } else { alert(data.message); }
+        }).catch(() => alert('网络错误'));
+    }
+
+    function deleteAward(id) {
+        if(confirm("确定删除这条奖惩记录吗？")) {
+            fetch(`/studentAwardManagement/api/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => { if(data.status === 'success') loadAwards(currentPage); });
+        }
+    }
+
+    // ================== 批量导入进度逻辑 ==================
+    function uploadExcel() {
+        const fileInput = document.getElementById('excelFileInput');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        let loadingOverlay = document.getElementById('loadingOverlay');
+        if (!loadingOverlay) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loadingOverlay';
+            loadingOverlay.innerHTML = `
+                <div style="background: rgba(255,255,255,0.95); padding: 30px 40px; border-radius: 16px; width: 320px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.05); backdrop-filter: blur(10px);">
+                    <div style="font-size: 16px; font-weight: 600; color: var(--text-main); margin-bottom: 8px;">正在导入奖惩记录</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">系统正在解析并绑定学生档案...</div>
+                    <div style="height: 6px; background: #e5e5ea; border-radius: 3px; overflow: hidden; margin-bottom: 12px;">
+                        <div id="uploadProgressBar" style="width: 0%; height: 100%; background: var(--apple-blue); border-radius: 3px; transition: width 0.3s ease-out;"></div>
+                    </div>
+                    <div id="uploadProgressText" style="font-size: 13px; font-weight: 600; color: var(--apple-blue);">0%</div>
+                </div>
+            `;
+            loadingOverlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(3px); z-index: 9999; display: flex; justify-content: center; align-items: center;';
+            document.body.appendChild(loadingOverlay);
+        } else {
+            loadingOverlay.style.display = 'flex';
+        }
+
+        const progressBar = document.getElementById('uploadProgressBar');
+        const progressText = document.getElementById('uploadProgressText');
+        progressBar.style.width = '0%';
+        progressText.innerText = '0%';
+
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            if (progress < 90) {
+                progress += Math.random() * 10 + 5;
+                if(progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+                progressText.innerText = Math.round(progress) + '%';
+            }
+        }, 150);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/studentAwardManagement/api/import', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            clearInterval(progressInterval);
+            progressBar.style.width = '100%';
+            progressText.innerText = '100%';
+            setTimeout(() => {
+                fileInput.value = '';
+                loadingOverlay.style.display = 'none';
+                if(data.status === 'success') {
+                    alert(`✅ 处理完成！\n成功导入: ${data.insert_count} 条\n失败/跳过: ${data.error_count} 条`);
+                    loadAwards(1);
+                } else {
+                    alert('❌ 失败：' + data.message);
+                }
+            }, 400);
+        }).catch(err => {
+            clearInterval(progressInterval);
+            loadingOverlay.style.display = 'none';
+            alert('网络错误');
+        });
+    }
+
+</script>
+{% endblock %}
