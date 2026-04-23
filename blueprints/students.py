@@ -38,7 +38,7 @@ def get_diff(old_dict, new_dict):
     """对比新旧字典，生成精确到字段的修改详情"""
     field_labels = {
         'school_id': '省学籍辅号', 'national_id': '国家身份证号', 'name': '姓名',
-        'former_name': '曾用名', 'sex': '性别', 'enter_year': '入学年份',
+        'former_name': '曾用名', 'sex': '性别', 'enter_year': '所在年级',
         'campus': '校区', 'current_class': '班级', 'subject': '选科', 'language_type': '外语种类',
         'category': '类别', 'major': '专业', 'at_school': '在校情况',
         'remarks': '特殊情况备注', 'boarding_status': '住宿情况',
@@ -100,11 +100,43 @@ def query_students():
                           'current_class', 'subject', 'language_type', 'category', 'major', 'at_school',
                           'boarding_status', 'remarks', 'former_name'}
         allowed_ops = {'=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IS_EMPTY', 'IS_NOT_EMPTY'}
+        # ================= 跨库虚拟字段拦截器 =================
+        # 遍历条件列表，查找 field = log_query 的目标条件
+        virtual_condition = None
+        for condition in filters:
+            # 安全获取字段值，避免键不存在报错
+            field_value = condition.get('field')
+            if field_value == 'log_query':
+                virtual_condition = condition
+                break
+        if virtual_condition:
+            keyword_val = virtual_condition.get('value', '').strip()
+            # 开启日志库独立查询
+            with closing(sqlite3.connect(LOG_DB_FILE)) as log_conn:
+                log_cursor = log_conn.cursor()
+                log_cursor.execute("SELECT DISTINCT custom_id FROM change_logs WHERE details LIKE ?",
+                                   (f'%{keyword_val}%',))
+                found_ids = [row[0] for row in log_cursor.fetchall() if row[0]]
+
+            # 将条件转化为底表的 IN 查询语句
+            if found_ids:
+                placeholders = ','.join(['?'] * len(found_ids))
+                query_parts.append(f"custom_id IN ({placeholders})")
+                params.extend(found_ids)
+            else:
+                # 如果没查到任何人，注入一个绝对为假的条件
+                query_parts.append("1=0")
+
+            # 销毁该虚拟条件，防止被后续的常规逻辑再次解析报错
+            filters = [cond for cond in filters if cond.get('field') != 'log_query']
+
         for i, f in enumerate(filters):
             field = f.get('field')
             op = f.get('operator')
             val = str(f.get('value', '')).strip()
-            logic = f.get('logic', 'AND').upper() if i > 0 else ''
+            # 提取逻辑连接词，无论它是第几个条件，先备用
+            logic = f.get('logic', 'AND').upper()
+
             if field in allowed_fields and op in allowed_ops:
                 if op == 'IS_EMPTY':
                     condition_str = f"({field} IS NULL OR {field} = '')"
@@ -115,11 +147,14 @@ def query_students():
                     condition_str = f"{field} {op} ?"
                 else:
                     continue
-
-                if i == 0:
+                # 判断前面是否已经有其他条件（比如被拦截器塞入的跨库条件）
+                if not query_parts:
+                    # 如果前面没有任何条件，这是真正的第一条，不需要逻辑词
                     query_parts.append(f"({condition_str})")
                 else:
-                    query_parts.append(f"{logic if logic in ('AND', 'OR') else 'AND'} ({condition_str})")
+                    # 如果前面已经有条件了，必须用逻辑词连接
+                    valid_logic = logic if logic in ('AND', 'OR') else 'AND'
+                    query_parts.append(f"{valid_logic} ({condition_str})")
         where_clause = " WHERE " + " ".join(query_parts) if query_parts else ""
     else:
         where_clause = ""
@@ -128,17 +163,18 @@ def query_students():
         with closing(sqlite3.connect(MAIN_DB_FILE)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            print(f"SELECT * FROM students {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?", params + [limit, offset])
             cursor.execute(f"SELECT COUNT(*) FROM students {where_clause}", params)
             total_count = cursor.fetchone()[0]
             cursor.execute(f"SELECT * FROM students {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
                            params + [limit, offset])
             rows = cursor.fetchall()
-
         total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
         return jsonify({"status": "success", "data": [dict(r) for r in rows], "total": total_count, "page": page,
                         "total_pages": total_pages})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 @students_bp.route('/api', methods=['POST'])
@@ -361,7 +397,7 @@ def import_students():
 
                     db_national_id = national_id if national_id and national_id.lower() not in ('nan', 'none') else None
                     db_school_id = school_id if school_id and school_id.lower() not in ('nan', 'none') else None
-                    enter_year = str(row.get('入学年份', '')).strip()
+                    enter_year = str(row.get('所在年级', '')).strip()
                     campus_name = str(row.get('校区', '')).strip()
 
                     common_values = (
@@ -552,3 +588,46 @@ def get_student_logs(custom_id):
         return jsonify({"status": "success", "data": [dict(r) for r in rows]})
     except Exception as e:
         return jsonify({"status": "error", "message": f"拉取日志失败: {str(e)}"}), 500
+
+
+@students_bp.route('/api/logs/recent', methods=['GET'])
+@login_required
+def get_recent_logs():
+    """获取全校最近的 20 条学生档案修改记录 (附带跨库查询姓名)"""
+    try:
+        # 1. 从日志库提取最新的20条记录
+        with closing(sqlite3.connect(LOG_DB_FILE)) as conn_log:
+            conn_log.row_factory = sqlite3.Row
+            cursor_log = conn_log.cursor()
+            cursor_log.execute('''
+                SELECT timestamp, editor, custom_id, action_type, details 
+                FROM change_logs 
+                ORDER BY timestamp DESC 
+                LIMIT 20
+            ''')
+            log_rows = [dict(r) for r in cursor_log.fetchall()]
+
+        # 2. 收集需要查询的学生编号去重列表
+        custom_ids = list(set([r['custom_id'] for r in log_rows if r.get('custom_id')]))
+        name_map = {}
+
+        # 3. 连接主业务库，批量查询并构建编号到姓名的映射字典
+        if custom_ids:
+            with closing(sqlite3.connect(MAIN_DB_FILE)) as conn_main:
+                cursor_main = conn_main.cursor()
+                # 动态生成占位符
+                placeholders = ','.join(['?'] * len(custom_ids))
+                cursor_main.execute(f'''
+                    SELECT custom_id, name FROM students WHERE custom_id IN ({placeholders})
+                ''', custom_ids)
+
+                for cid, name in cursor_main.fetchall():
+                    name_map[cid] = name
+
+        # 4. 将查到的姓名拼装入返回的数据中 (若学生已被彻底删除则兜底显示)
+        for log in log_rows:
+            log['student_name'] = name_map.get(log['custom_id'], '未知/已删除')
+
+        return jsonify({"status": "success", "data": log_rows})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

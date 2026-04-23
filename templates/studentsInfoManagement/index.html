@@ -82,6 +82,7 @@
         <div class="controls-header">
             <div>
                 <button class="secondary" id="toggleModeBtn" onclick="toggleFilterMode()">⧉ 启用高级筛选</button>
+                <button class="secondary" style="margin-left: 10px;" onclick="openRecentLogsModal()">🕒 近期修改</button>
             </div>
             <div class="controls-actions">
                 <button class="secondary" onclick="window.location.href='/static/files/学生信息批量修改模板.xlsx'">📥 下载模板</button>
@@ -96,7 +97,7 @@
             <select id="s_campus" style="width:120px;">
                 <option value="">全部校区</option><option value="校本部">校本部</option><option value="礼贤校区">礼贤校区</option>
             </select>
-            <input type="text" id="s_year" placeholder="入学年份 (如2024)" style="width:140px;" onkeypress="handleEnter(event)">
+            <input type="text" id="s_year" placeholder="所在年级 (如2024)" style="width:140px;" onkeypress="handleEnter(event)">
             <input type="text" id="s_class" placeholder="班级 (如1或12)" style="width:140px;" onkeypress="handleEnter(event)">
             <button onclick="loadStudents(1)">查询</button>
             <button class="secondary" onclick="resetSimpleFilters()">重置</button>
@@ -112,6 +113,7 @@
                 <button type="button" class="quick-filter-btn quick-btn-yellow" onclick="addSpecificAdvRow('AND', 'former_name', 'IS_NOT_EMPTY', '')">改过名的学生</button>
                 <button type="button" class="quick-filter-btn quick-btn-pink" onclick="addSpecificAdvRow('AND', 'remarks', 'LIKE', '复读')">复读生</button>
                 <button type="button" class="quick-filter-btn quick-btn-mint" onclick="addSpecificAdvRow('AND', 'remarks', 'LIKE', '借读')">借读生</button>
+                <button type="button" class="quick-filter-btn quick-btn-iceblue" onclick="addSpecificAdvRow('AND', 'log_query', 'LIKE', '[选科]')">改过选科的学生</button>
             </div>
             <div id="advRowsContainer" style="width: 100%;"></div>
             <div style="margin-top: 5px; display: flex; gap: 10px;">
@@ -170,7 +172,7 @@
 
                 <div class="form-section">🎓 学籍与学术信息</div>
                 <div class="form-group"><label>校区 *</label><select id="f_campus"><option value="">请选择</option><option value="校本部">校本部</option><option value="礼贤校区">礼贤校区</option><option value="暂无" style="display:none;">暂无</option></select></div>
-                <div class="form-group"><label>入学年份 *</label><input type="text" id="f_enter_year" maxlength="4" placeholder="例如：2026"></div>
+                <div class="form-group"><label>所在年级 *</label><input type="text" id="f_enter_year" maxlength="4" placeholder="例如：2026"></div>
                 <div class="form-group"><label>当前班级 *</label><input type="text" id="f_current_class" maxlength="2" placeholder="例如：1 或 12"></div>
                 <div class="form-group"><label>选科 *</label><input type="text" id="f_subject" placeholder="例如：物化生"></div>
                 <div class="form-group"><label>外语种类 *</label>
@@ -228,6 +230,34 @@
     </div>
 </div>
 
+<div class="overlay" id="recentLogsOverlay" style="display: none; z-index: 1000;">
+    <div class="modal" style="width: 70%; max-height: 80vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h2 style="margin-top:0; margin-bottom: 5px;">近期修改记录(20条)</h2>
+            </div>
+            <button type="button" onclick="closeRecentLogsModal()" style="background: transparent; color: #86868b; font-size: 24px; padding: 0; line-height: 1; margin-top: -5px;" title="关闭">&times;</button>
+        </div>
+        <div style="overflow-y: auto; margin-top: 15px; border: 1px solid #e8e8ed; border-radius: 6px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead style="position: sticky; top: 0; background: #fbfbfd; z-index: 1;">
+                    <tr>
+                        <th style="padding: 10px; border-bottom: 1px solid #d2d2d7;width: 10%;">时间</th>
+                        <th style="padding: 10px; border-bottom: 1px solid #d2d2d7;width: 10%;">操作人</th>
+                        <th style="padding: 10px; border-bottom: 1px solid #d2d2d7;width: 7.5%;">目标编号</th>
+                        <th style="padding: 10px; border-bottom: 1px solid #d2d2d7;width: 7.5%;">姓名</th>
+                        <th style="padding: 10px; border-bottom: 1px solid #d2d2d7;width: 10%;">动作</th>
+                        <th style="padding: 10px; border-bottom: 1px solid #d2d2d7;width: auto;">详细说明</th>
+                    </tr>
+                </thead>
+                <tbody id="recentLogsTableBody">
+                    <tr><td colspan="5" style="text-align:center; padding: 20px; color: #86868b;">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script>
     let allStudents = [];
     let currentEditId = null;
@@ -242,7 +272,7 @@
         'name': { label: '姓名', type: 'text' },
         'former_name': { label: '曾用名', type: 'text' },
         'sex': { label: '性别', type: 'select', options: ['男', '女'] },
-        'enter_year': { label: '入学年份', type: 'text' },
+        'enter_year': { label: '所在年级', type: 'text' },
         'campus': { label: '校区', type: 'select', options: ['校本部', '礼贤校区'] },
         'current_class': { label: '班级', type: 'text' },
         'subject': { label: '选科', type: 'text' },
@@ -251,7 +281,8 @@
         'at_school': { label: '在校情况', type: 'select', options: ['正常在校', '长期不在校'] },
         'boarding_status': { label: '住宿情况', type: 'select', options: ['住宿', '走读'] },
         'major': { label: '专业', type: 'text' },
-        'remarks': { label: '特殊备注', type: 'text' }
+        'remarks': { label: '特殊备注', type: 'text' },
+        'log_query': { label: '日志查询', type: 'text'}
     };
 
     document.addEventListener('DOMContentLoaded', () => { addAdvRow(); });
@@ -524,7 +555,7 @@
         });
     }
 
-    const requiredFields = { 'f_name':'姓名', 'f_enter_year':'入学年份', 'f_campus':'校区', 'f_current_class':'当前班级', 'f_subject':'选科', 'f_language_type':'外语种类', 'f_category':'类别', 'f_at_school':'在校情况', 'f_boarding_status':'住宿情况' };
+    const requiredFields = { 'f_name':'姓名', 'f_enter_year':'所在年级', 'f_campus':'校区', 'f_current_class':'当前班级', 'f_subject':'选科', 'f_language_type':'外语种类', 'f_category':'类别', 'f_at_school':'在校情况', 'f_boarding_status':'住宿情况' };
 
     function toggleBoardingFields() {
         const status = document.getElementById('f_boarding_status').value;
@@ -687,6 +718,38 @@
 
         // 2. 触发浏览器下载
         window.location.href = `/students/api/export_query?${params.toString()}`;
+    }
+
+    // ================== 近期修改追踪逻辑 ==================
+    function openRecentLogsModal() {
+        document.getElementById('recentLogsOverlay').style.display = 'flex';
+        document.getElementById('recentLogsTableBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #86868b;">正在拉取审计日志...</td></tr>';
+
+        fetch('/students/api/logs/recent')
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('recentLogsTableBody');
+            if(data.status === 'success' && data.data.length > 0) {
+                tbody.innerHTML = data.data.map(log => `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #e8e8ed;">${log.timestamp}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e8e8ed;"><strong>${log.editor}</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e8e8ed;">${log.custom_id}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e8e8ed;"><strong>${log.student_name}</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e8e8ed;"><span style="background:#f3f3f5; padding: 3px 6px; border-radius:4px; font-size: 12px; color: #1d1d1f;">${log.action_type}</span></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #e8e8ed; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${log.details}">${log.details}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #86868b;">暂无修改记录</td></tr>';
+            }
+        }).catch(err => {
+            document.getElementById('recentLogsTableBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--apple-red);">网络请求失败</td></tr>';
+        });
+    }
+
+    function closeRecentLogsModal() {
+        document.getElementById('recentLogsOverlay').style.display = 'none';
     }
 
 </script>
